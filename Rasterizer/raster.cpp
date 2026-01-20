@@ -5,6 +5,7 @@
 #include "GamesEngineeringBase.h" // Include the GamesEngineeringBase header
 #include <algorithm>
 #include <chrono>
+#include <thread>
 
 #include <cmath>
 #include "matrix.h"
@@ -15,6 +16,7 @@
 #include "RNG.h"
 #include "light.h"
 #include "triangle.h"
+#include "timer.h"
 
 // Main rendering function that processes a mesh, transforms its vertices, applies lighting, and draws triangles on the canvas.
 // Input Variables:
@@ -255,14 +257,26 @@ void scene2() {
         delete m;
 }
 
+void testTimer() {
+    TimerCaptures tc;
+
+    for (int i=0; i<10; i++) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(40));
+        tc.capture();
+    }
+
+    tc.printAverageElapsed();
+}
+
 // Entry point of the application
 // No input variables
 int main() {
     // Uncomment the desired scene function to run
     //scene1();
-    scene2();
+    //scene2();
     //sceneTest(); 
     
+    testTimer();
 
     return 0;
 }
