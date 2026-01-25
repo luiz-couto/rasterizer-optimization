@@ -4,6 +4,9 @@
 #include <vector>
 #include "vec4.h"
 
+#define USE_AVOID_IDENTITY_LOOP_OPTIMISATION false
+#define USE_AVOID_DUP_ANGLE_CALC_OPTIMISATION false
+
 // Matrix class for 4x4 transformation matrices
 class matrix {
     union {
@@ -100,10 +103,21 @@ public:
     static matrix makeRotateZ(float aRad) {
         matrix m;
         m.identity();
-        m.a[0] = std::cos(aRad);
-        m.a[1] = -std::sin(aRad);
-        m.a[4] = std::sin(aRad);
-        m.a[5] = std::cos(aRad);
+
+        #if USE_AVOID_DUP_ANGLE_CALC_OPTIMISATION
+            float cos = std::cos(aRad);
+            float sin = std::sin(aRad);
+            m.a[0] = cos;
+            m.a[1] = -sin;
+            m.a[4] = sin;
+            m.a[5] = cos;
+        #else
+            m.a[0] = std::cos(aRad);
+            m.a[1] = -std::sin(aRad);
+            m.a[4] = std::sin(aRad);
+            m.a[5] = std::cos(aRad);
+        #endif
+    
         return m;
     }
 
@@ -114,10 +128,21 @@ public:
     static matrix makeRotateX(float aRad) {
         matrix m;
         m.identity();
-        m.a[5] = std::cos(aRad);
-        m.a[6] = -std::sin(aRad);
-        m.a[9] = std::sin(aRad);
-        m.a[10] = std::cos(aRad);
+
+        #if USE_AVOID_DUP_ANGLE_CALC_OPTIMISATION
+            float cos = std::cos(aRad);
+            float sin = std::sin(aRad);
+            m.a[5] = cos;
+            m.a[6] = -sin;
+            m.a[9] = sin;
+            m.a[10] = cos;
+        #else
+            m.a[5] = std::cos(aRad);
+            m.a[6] = -std::sin(aRad);
+            m.a[9] = std::sin(aRad);
+            m.a[10] = std::cos(aRad);
+        #endif
+
         return m;
     }
 
@@ -128,10 +153,21 @@ public:
     static matrix makeRotateY(float aRad) {
         matrix m;
         m.identity();
-        m.a[0] = std::cos(aRad);
-        m.a[2] = std::sin(aRad);
-        m.a[8] = -std::sin(aRad);
-        m.a[10] = std::cos(aRad);
+        
+        #if USE_AVOID_DUP_ANGLE_CALC_OPTIMISATION
+            float cos = std::cos(aRad);
+            float sin = std::sin(aRad);
+            m.a[0] = cos;
+            m.a[2] = sin;
+            m.a[8] = -sin;
+            m.a[10] = cos;
+        #else
+            m.a[0] = std::cos(aRad);
+            m.a[2] = std::sin(aRad);
+            m.a[8] = -std::sin(aRad);
+            m.a[10] = std::cos(aRad);
+        #endif
+
         return m;
     }
 
@@ -178,11 +214,18 @@ private:
 
     // Set the matrix as an identity matrix
     void identity() {
-        for (int i = 0; i < 4; ++i) {
-            for (int j = 0; j < 4; ++j) {
-                m[i][j] = (i == j) ? 1.0f : 0.0f;
+        #if USE_AVOID_IDENTITY_LOOP_OPTIMISATION
+            a[0] = 1.0f; a[1] = 0.0f; a[2] = 0.0f; a[3] = 0.0f;
+            a[4] = 0.0f; a[5] = 1.0f; a[6] = 0.0f; a[7] = 0.0f;
+            a[8] = 0.0f; a[9] = 0.0f; a[10] = 1.0f; a[11] = 0.0f;
+            a[12] = 0.0f; a[13] = 0.0f; a[14] = 0.0f; a[15] = 1.0f;
+        #else
+            for (int i = 0; i < 4; ++i) {
+                for (int j = 0; j < 4; ++j) {
+                    m[i][j] = (i == j) ? 1.0f : 0.0f;
+                }
             }
-        }
+        #endif
     }
 };
 
