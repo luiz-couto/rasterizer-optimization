@@ -18,6 +18,8 @@
 #include "triangle.h"
 #include "timer.h"
 
+#define USE_TC_TIMER_OPTIMISATION true
+
 // Main rendering function that processes a mesh, transforms its vertices, applies lighting, and draws triangles on the canvas.
 // Input Variables:
 // - renderer: The Renderer object used for drawing.
@@ -151,8 +153,13 @@ void scene1() {
     float zoffset = 8.0f; // Initial camera Z-offset
     float step = -0.1f;  // Step size for camera movement
 
-    auto start = std::chrono::high_resolution_clock::now();
-    std::chrono::time_point<std::chrono::high_resolution_clock> end;
+    #if USE_TC_TIMER_OPTIMISATION
+        TimerCaptures tc;
+    #else
+        auto start = std::chrono::high_resolution_clock::now();
+        std::chrono::time_point<std::chrono::high_resolution_clock> end;
+    #endif
+    
     int cycle = 0;
 
     // Main rendering loop
@@ -172,9 +179,13 @@ void scene1() {
         if (zoffset < -60.f || zoffset > 8.f) {
             step *= -1.f;
             if (++cycle % 2 == 0) {
-                end = std::chrono::high_resolution_clock::now();
-                std::cout << cycle / 2 << " :" << std::chrono::duration<double, std::milli>(end - start).count() << "ms\n";
-                start = std::chrono::high_resolution_clock::now();
+                #if USE_TC_TIMER_OPTIMISATION
+                    tc.capture();
+                #else
+                    end = std::chrono::high_resolution_clock::now();
+                    std::cout << cycle / 2 << " :" << std::chrono::duration<double, std::milli>(end - start).count() << "ms\n";
+                    start = std::chrono::high_resolution_clock::now();
+                #endif
             }
         }
 
@@ -185,6 +196,10 @@ void scene1() {
 
     for (auto& m : scene)
         delete m;
+    
+    #if USE_TC_TIMER_OPTIMISATION
+        tc.printAverageElapsed();
+    #endif
 }
 
 // Scene with a grid of cubes and a moving sphere
@@ -221,8 +236,13 @@ void scene2() {
     float sphereStep = 0.1f;
     sphere->world = matrix::makeTranslation(sphereOffset, 0.f, -6.f);
 
-    auto start = std::chrono::high_resolution_clock::now();
-    std::chrono::time_point<std::chrono::high_resolution_clock> end;
+    #if USE_TC_TIMER_OPTIMISATION
+        TimerCaptures tc;
+    #else
+        auto start = std::chrono::high_resolution_clock::now();
+        std::chrono::time_point<std::chrono::high_resolution_clock> end;
+    #endif
+
     int cycle = 0;
 
     bool running = true;
@@ -240,9 +260,13 @@ void scene2() {
         if (sphereOffset > 6.0f || sphereOffset < -6.0f) {
             sphereStep *= -1.f;
             if (++cycle % 2 == 0) {
-                end = std::chrono::high_resolution_clock::now();
-                std::cout << cycle / 2 << " :" << std::chrono::duration<double, std::milli>(end - start).count() << "ms\n";
-                start = std::chrono::high_resolution_clock::now();
+                #if USE_TC_TIMER_OPTIMISATION
+                    tc.capture();
+                #else
+                    end = std::chrono::high_resolution_clock::now();
+                    std::cout << cycle / 2 << " :" << std::chrono::duration<double, std::milli>(end - start).count() << "ms\n";
+                    start = std::chrono::high_resolution_clock::now();
+                #endif
             }
         }
 
@@ -255,6 +279,10 @@ void scene2() {
 
     for (auto& m : scene)
         delete m;
+
+    #if USE_TC_TIMER_OPTIMISATION
+        tc.printAverageElapsed();
+    #endif
 }
 
 void testTimer() {
@@ -273,10 +301,10 @@ void testTimer() {
 int main() {
     // Uncomment the desired scene function to run
     //scene1();
-    //scene2();
+    scene2();
     //sceneTest(); 
     
-    testTimer();
+    //testTimer();
 
     return 0;
 }
