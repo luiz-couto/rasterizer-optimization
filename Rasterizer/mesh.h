@@ -6,12 +6,27 @@
 #include "matrix.h"
 #include "colour.h"
 
+#define USE_VERTICES_SOA_OPTIMIZATION false
+
 // Represents a vertex in a 3D mesh, including its position, normal, and color
+// 44 bytes per vertex
+// When accessing 3 vertices per triangle (132 bytes), crosses multiple cache lines (64 bytes each)
 struct Vertex {
-    vec4 p;         // Position of the vertex in 3D space
-    vec4 normal;    // Normal vector for the vertex
-    colour rgb;     // Color of the vertex
+    vec4 p;         // Position of the vertex in 3D space // 16 bytes
+    vec4 normal;    // Normal vector for the vertex // 16 bytes
+    colour rgb;     // Color of the vertex // ~ 12 bytes 
 };
+
+#if USE_VERTICES_SOA_OPTIMIZATION
+
+struct VerticesAoS {
+    std::vector<vec4> positions;
+    std::vector<vec4> normals;
+    std::vector<colour> colors;
+};
+
+#endif
+
 
 // Stores indices of vertices that form a triangle in a mesh
 struct triIndices {
@@ -32,7 +47,13 @@ public:
     float kd;         // Diffuse reflection coefficient
     float ka;         // Ambient reflection coefficient
     matrix world;     // Transformation matrix for the mesh
-    std::vector<Vertex> vertices;       // List of vertices in the mesh
+    
+    #if USE_VERTICES_SOA_OPTIMIZATION
+        VerticesAoS vSOA; // SOA structure for vertices 
+    #else
+        std::vector<Vertex> vertices;       // List of vertices in the mesh
+    #endif
+
     std::vector<triIndices> triangles;  // List of triangles in the mesh
 
     // Set the uniform color and reflection coefficients for the mesh
@@ -57,8 +78,14 @@ public:
     // - vertex: Position of the vertex
     // - normal: Normal vector for the vertex
     void addVertex(const vec4& vertex, const vec4& normal) {
-        Vertex v = { vertex, normal, col };
-        vertices.push_back(v);
+        #if USE_VERTICES_SOA_OPTIMIZATION
+            vSOA.positions.push_back(vertex);
+            vSOA.normals.push_back(normal);
+            vSOA.colors.push_back(col);
+        #else
+            Vertex v = { vertex, normal, col };
+            vertices.push_back(v);
+        #endif
     }
 
     // Add a triangle to the mesh
@@ -71,10 +98,18 @@ public:
     // Display the vertices and triangles of the mesh
     void display() const {
         std::cout << "Vertices and Normals:\n";
-        for (size_t i = 0; i < vertices.size(); ++i) {
-            std::cout << i << ": Vertex (" << vertices[i].p[0] << ", " << vertices[i].p[1] << ", " << vertices[i].p[2] << ", " << vertices[i].p[3] << ")"
-                << " Normal (" << vertices[i].normal[0] << ", " << vertices[i].normal[1] << ", " << vertices[i].normal[2] << ", " << vertices[i].normal[3] << ")\n";
-        }
+        #if USE_VERTICES_SOA_OPTIMIZATION
+            size_t size = vSOA.positions.size();
+            for (size_t i = 0; i<size; ++i) {
+                std::cout << i << ": Vertex (" << vSOA.positions[i][0] << ", " << vSOA.positions[i][1] << ", " << vSOA.positions[i][2] << ", " << vSOA.positions[i][3] << ")"
+                    << " Normal (" << vSOA.normals[i][0] << ", " << vSOA.normals[i][1] << ", " << vSOA.normals[i][2] << ", " << vSOA.normals[i][3] << ")\n";
+            }
+        #else
+            for (size_t i = 0; i < vertices.size(); ++i) {
+                std::cout << i << ": Vertex (" << vertices[i].p[0] << ", " << vertices[i].p[1] << ", " << vertices[i].p[2] << ", " << vertices[i].p[3] << ")"
+                    << " Normal (" << vertices[i].normal[0] << ", " << vertices[i].normal[1] << ", " << vertices[i].normal[2] << ", " << vertices[i].normal[3] << ")\n";
+            }
+        #endif
 
         std::cout << "\nTriangles:\n";
         for (const auto& t : triangles) {
@@ -89,7 +124,15 @@ public:
     // Returns a Mesh object representing the rectangle
     static Mesh makeRectangle(float x1, float y1, float x2, float y2) {
         Mesh mesh;
-        mesh.vertices.clear();
+        
+        #if USE_VERTICES_SOA_OPTIMIZATION
+            mesh.vSOA.positions.clear();
+            mesh.vSOA.normals.clear();
+            mesh.vSOA.colors.clear();
+        #else
+            mesh.vertices.clear();
+        #endif
+
         mesh.triangles.clear();
 
         // Define the four corners of the rectangle
@@ -189,7 +232,14 @@ public:
             throw std::invalid_argument("Latitude divisions must be >= 2 and longitude divisions >= 3");
         }
 
-        mesh.vertices.clear();
+        #if USE_VERTICES_SOA_OPTIMIZATION
+            mesh.vSOA.positions.clear();
+            mesh.vSOA.normals.clear();
+            mesh.vSOA.colors.clear();
+        #else
+            mesh.vertices.clear();
+        #endif
+
         mesh.triangles.clear();
 
         // Create vertices

@@ -18,7 +18,7 @@
 #include "triangle.h"
 #include "timer.h"
 
-#define USE_TC_TIMER_OPTIMISATION true
+#define USE_TC_TIMER_OPTIMISATION false
 
 // Main rendering function that processes a mesh, transforms its vertices, applies lighting, and draws triangles on the canvas.
 // Input Variables:
@@ -36,12 +36,22 @@ void render(Renderer& renderer, Mesh* mesh, matrix& camera, Light& L) {
 
         // Transform each vertex of the triangle
         for (unsigned int i = 0; i < 3; i++) {
-            t[i].p = p * mesh->vertices[ind.v[i]].p; // Apply transformations
+            #if USE_VERTICES_SOA_OPTIMIZATION
+                t[i].p = p * mesh->vSOA.positions[ind.v[i]];
+            #else
+                t[i].p = p * mesh->vertices[ind.v[i]].p; // Apply transformations
+            #endif
+
             t[i].p.divideW(); // Perspective division to normalize coordinates
 
             // Transform normals into world space for accurate lighting
             // no need for perspective correction as no shearing or non-uniform scaling
-            t[i].normal = mesh->world * mesh->vertices[ind.v[i]].normal; 
+            #if USE_VERTICES_SOA_OPTIMIZATION
+                t[i].normal = mesh->world * mesh->vSOA.normals[ind.v[i]];
+            #else
+                t[i].normal = mesh->world * mesh->vertices[ind.v[i]].normal; 
+            #endif
+
             t[i].normal.normalise();
 
             // Map normalized device coordinates to screen space
@@ -50,7 +60,11 @@ void render(Renderer& renderer, Mesh* mesh, matrix& camera, Light& L) {
             t[i].p[1] = renderer.canvas.getHeight() - t[i].p[1]; // Invert y-axis
 
             // Copy vertex colours
-            t[i].rgb = mesh->vertices[ind.v[i]].rgb;
+            #if USE_VERTICES_SOA_OPTIMIZATION
+                t[i].rgb = mesh->vSOA.colors[ind.v[i]];
+            #else
+                t[i].rgb = mesh->vertices[ind.v[i]].rgb;
+            #endif
         }
 
         // Clip triangles with Z-values outside [-1, 1]
@@ -144,6 +158,7 @@ void scene1() {
         *m = Mesh::makeCube(1.f);
         m->world = matrix::makeTranslation(-2.0f, 0.0f, (-3 * static_cast<float>(i))) * makeRandomRotation();
         scene.push_back(m);
+
         m = new Mesh();
         *m = Mesh::makeCube(1.f);
         m->world = matrix::makeTranslation(2.0f, 0.0f, (-3 * static_cast<float>(i))) * makeRandomRotation();
