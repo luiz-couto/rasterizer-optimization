@@ -4,8 +4,7 @@
 #include <vector>
 #include "vec4.h"
 
-#define USE_AVOID_IDENTITY_LOOP_OPTIMISATION false
-#define USE_AVOID_DUP_ANGLE_CALC_OPTIMISATION false
+#include "optimizations.h"
 
 // Matrix class for 4x4 transformation matrices
 class matrix {

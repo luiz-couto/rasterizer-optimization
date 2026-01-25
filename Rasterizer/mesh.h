@@ -6,7 +6,7 @@
 #include "matrix.h"
 #include "colour.h"
 
-#define USE_VERTICES_SOA_OPTIMIZATION false
+#include "optimizations.h"
 
 // Represents a vertex in a 3D mesh, including its position, normal, and color
 // 44 bytes per vertex

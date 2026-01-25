@@ -18,7 +18,7 @@
 #include "triangle.h"
 #include "timer.h"
 
-#define USE_TC_TIMER_OPTIMISATION false
+#include "optimizations.h"
 
 // Main rendering function that processes a mesh, transforms its vertices, applies lighting, and draws triangles on the canvas.
 // Input Variables:
@@ -298,6 +298,12 @@ void scene2() {
     #if USE_TC_TIMER_OPTIMISATION
         tc.printAverageElapsed();
     #endif
+}
+
+// The SoA optimization will help in vertex-heavy scenario, but the current workload 
+// is rasterization-bound, not transform-bound.
+void scene3() {
+    // Placeholder for future scene implementation
 }
 
 void testTimer() {
