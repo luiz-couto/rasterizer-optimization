@@ -102,6 +102,7 @@ public:
 
     // Normalizes the vector to make its length equal to 1.
     // This operation does not affect the W component.
+    // Normalise is a super expensive operation
     void normalise() {
         float length = std::sqrt(x * x + y * y + z * z);
         x /= length;

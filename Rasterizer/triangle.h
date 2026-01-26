@@ -8,6 +8,8 @@
 #include <algorithm>
 #include <cmath>
 
+#include "optimizations.h"
+
 // Simple support class for a 2D vector
 class vec2D {
 public:
@@ -119,29 +121,41 @@ public:
 
                 // Check if the pixel lies inside the triangle
                 if (getCoordinates(vec2D((float)x, (float)y), alpha, beta, gamma)) {
+
+                    #if USE_EARLY_DEPTH_TEST_OPTIMIZATION
+                        float depth = interpolate(beta, gamma, alpha, v[0].p[2], v[1].p[2], v[2].p[2]);
+                        if (!(renderer.zbuffer(x, y) > depth && depth > 0.001f)) continue;
+                    #endif
+
                     // Interpolate color, depth, and normals
                     colour c = interpolate(beta, gamma, alpha, v[0].rgb, v[1].rgb, v[2].rgb);
                     c.clampColour();
-                    float depth = interpolate(beta, gamma, alpha, v[0].p[2], v[1].p[2], v[2].p[2]);
+
+                    #if !USE_EARLY_DEPTH_TEST_OPTIMIZATION
+                       float depth = interpolate(beta, gamma, alpha, v[0].p[2], v[1].p[2], v[2].p[2]);
+                    #endif
+                    
                     vec4 normal = interpolate(beta, gamma, alpha, v[0].normal, v[1].normal, v[2].normal);
                     normal.normalise();
 
                     // Perform Z-buffer test and apply shading
-                    if (renderer.zbuffer(x, y) > depth && depth > 0.001f) {
-                        
-                        // typical shader begin
-                        #ifndef USE_LIGHT_NORM_OUT_OPTIMIZATION
-                            L.omega_i.normalise();
-                        #endif
+                    #if !USE_EARLY_DEPTH_TEST_OPTIMIZATION
+                        if (!(renderer.zbuffer(x, y) > depth && depth > 0.001f)) continue;
+                    #endif
 
-                        float dot = std::max(vec4::dot(L.omega_i, normal), 0.0f);
-                        colour a = (c * kd) * (L.L * dot) + (L.ambient * ka); // using kd instead of ka for ambient
-                        // typical shader end
-                        unsigned char r, g, b;
-                        a.toRGB(r, g, b);
-                        renderer.canvas.draw(x, y, r, g, b);
-                        renderer.zbuffer(x, y) = depth;
-                    }
+                    // typical shader begin
+                    #if !USE_LIGHT_NORM_OUT_OPTIMIZATION
+                        L.omega_i.normalise();
+                    #endif
+
+                    float dot = std::max(vec4::dot(L.omega_i, normal), 0.0f);
+                    colour a = (c * kd) * (L.L * dot) + (L.ambient * ka); // using kd instead of ka for ambient
+                    // typical shader end
+                    unsigned char r, g, b;
+                    a.toRGB(r, g, b);
+                    renderer.canvas.draw(x, y, r, g, b);
+                    renderer.zbuffer(x, y) = depth;
+                    
                 }
             }
         }
