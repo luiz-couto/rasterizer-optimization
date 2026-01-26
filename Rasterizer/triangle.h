@@ -45,6 +45,10 @@ class triangle {
     float area;        // Area of the triangle
     colour col[3];     // Colors for each vertex of the triangle
 
+    #if USE_STORE_VEC2D_TRIANGLE_OPTIMIZATION
+        vec2D zero, one, two;
+    #endif
+
 public:
     // Constructor initializes the triangle with three vertices
     // Input Variables:
@@ -58,6 +62,12 @@ public:
         vec2D e1 = vec2D(v[1].p - v[0].p);
         vec2D e2 = vec2D(v[2].p - v[0].p);
         area = std::fabs(e1.x * e2.y - e1.y * e2.x);
+
+        #if USE_STORE_VEC2D_TRIANGLE_OPTIMIZATION
+            zero = vec2D(v[0].p);
+            one = vec2D(v[1].p);
+            two = vec2D(v[2].p);
+        #endif
     }
 
     // Helper function to compute the cross product for barycentric coordinates
@@ -77,9 +87,15 @@ public:
     // - alpha, beta, gamma: Barycentric coordinates of the point
     // Returns true if the point is inside the triangle, false otherwise
     bool getCoordinates(vec2D p, float& alpha, float& beta, float& gamma) {
-        alpha = getC(vec2D(v[0].p), vec2D(v[1].p), p) / area;
-        beta = getC(vec2D(v[1].p), vec2D(v[2].p), p) / area;
-        gamma = getC(vec2D(v[2].p), vec2D(v[0].p), p) / area;
+        #if USE_STORE_VEC2D_TRIANGLE_OPTIMIZATION
+            alpha = getC(zero, one, p) / area;
+            beta = getC(one, two, p) / area;
+            gamma = getC(two, zero, p) / area;
+        #else
+            alpha = getC(vec2D(v[0].p), vec2D(v[1].p), p) / area;
+            beta = getC(vec2D(v[1].p), vec2D(v[2].p), p) / area;
+            gamma = getC(vec2D(v[2].p), vec2D(v[0].p), p) / area;
+        #endif
 
         if (alpha < 0.f || beta < 0.f || gamma < 0.f) return false;
         return true;
