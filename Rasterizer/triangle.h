@@ -107,6 +107,11 @@ public:
         // Skip very small triangles
         if (area < 1.f) return;
 
+        #if USE_LIGHT_NORM_OUT_OPTIMIZATION
+            L.omega_i.normalise();
+        #endif
+
+
         // Iterate over the bounding box and check each pixel
         for (int y = (int)(minV.y); y < (int)ceil(maxV.y); y++) {
             for (int x = (int)(minV.x); x < (int)ceil(maxV.x); x++) {
@@ -123,8 +128,12 @@ public:
 
                     // Perform Z-buffer test and apply shading
                     if (renderer.zbuffer(x, y) > depth && depth > 0.001f) {
+                        
                         // typical shader begin
-                        L.omega_i.normalise();
+                        #ifndef USE_LIGHT_NORM_OUT_OPTIMIZATION
+                            L.omega_i.normalise();
+                        #endif
+
                         float dot = std::max(vec4::dot(L.omega_i, normal), 0.0f);
                         colour a = (c * kd) * (L.L * dot) + (L.ambient * ka); // using kd instead of ka for ambient
                         // typical shader end
