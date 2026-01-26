@@ -36,6 +36,14 @@ public:
         return { x * scalar, y * scalar, z * scalar, w * scalar };
     }
 
+    bool operator==(const vec4& other) const {
+        if (x - other.x > 0.0001f) return false;
+        if (y - other.y > 0.0001f) return false;
+        if (z - other.z > 0.0001f) return false;
+        if (w - other.w > 0.0001f) return false;
+        return true;
+    }
+
     // Divides the vector by its W component and sets W to 1.
     // Useful for normalizing the W component after transformations.
     void divideW() {

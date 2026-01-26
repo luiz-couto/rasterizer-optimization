@@ -136,7 +136,10 @@ public:
                     #endif
                     
                     vec4 normal = interpolate(beta, gamma, alpha, v[0].normal, v[1].normal, v[2].normal);
-                    normal.normalise();
+                    #if !USE_AVOID_NORMAL_NORMALIZATION_OPTIMIZATION
+                        normal.normalise();
+                    #endif
+                    
 
                     // Perform Z-buffer test and apply shading
                     #if !USE_EARLY_DEPTH_TEST_OPTIMIZATION
