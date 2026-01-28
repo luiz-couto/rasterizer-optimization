@@ -156,10 +156,11 @@ public:
                     float qy2 = py - two.y;
                     
                     float alpha = (qy0 * edge01.x - qx0 * edge01.y) * invArea;
+                    if (alpha < 0.f) continue;
                     float beta = (qy1 * edge12.x - qx1 * edge12.y) * invArea;
+                    if (beta < 0.f) continue;
                     float gamma = (qy2 * edge20.x - qx2 * edge20.y) * invArea;
-                    
-                    if (alpha < 0.f || beta < 0.f || gamma < 0.f) continue;
+                    if (gamma < 0.f) continue;
                 #else
                     // Check if the pixel lies inside the triangle
                     float alpha, beta, gamma;
@@ -203,8 +204,6 @@ public:
                 a.toRGB(r, g, b);
                 renderer.canvas.draw(x, y, r, g, b);
                 renderer.zbuffer(x, y) = depth;
-                    
-                
             }
         }
     }
