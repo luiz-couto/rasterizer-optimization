@@ -48,6 +48,7 @@ class triangle {
     #if USE_STORE_VEC2D_INV_AREA_OPTIMIZATION
         float invArea;
         vec2D zero, one, two;
+        vec2D edge01, edge12, edge20;
     #endif
 
 public:
@@ -66,9 +67,17 @@ public:
         
         #if USE_STORE_VEC2D_INV_AREA_OPTIMIZATION
             invArea = 1.0f / area;
+
             zero = vec2D(v[0].p);
             one = vec2D(v[1].p);
             two = vec2D(v[2].p);
+
+            edge01.x = one.x - zero.x;
+            edge01.y = one.y - zero.y;
+            edge12.x = two.x - one.x;
+            edge12.y = two.y - one.y;
+            edge20.x = zero.x - two.x;
+            edge20.y = zero.y - two.y;
         #endif
     }
 
@@ -135,49 +144,67 @@ public:
         // Iterate over the bounding box and check each pixel
         for (int y = (int)(minV.y); y < (int)ceil(maxV.y); y++) {
             for (int x = (int)(minV.x); x < (int)ceil(maxV.x); x++) {
-                float alpha, beta, gamma;
+                #if USE_STORE_VEC2D_INV_AREA_OPTIMIZATION
+                    float px = (float)x;
+                    float py = (float)y;
 
-                // Check if the pixel lies inside the triangle
-                if (getCoordinates(vec2D((float)x, (float)y), alpha, beta, gamma)) {
-
-                    #if USE_EARLY_DEPTH_TEST_OPTIMIZATION
-                        float depth = interpolate(beta, gamma, alpha, v[0].p[2], v[1].p[2], v[2].p[2]);
-                        if (!(renderer.zbuffer(x, y) > depth && depth > 0.001f)) continue;
-                    #endif
-
-                    // Interpolate color, depth, and normals
-                    colour c = interpolate(beta, gamma, alpha, v[0].rgb, v[1].rgb, v[2].rgb);
-                    c.clampColour();
-
-                    #if !USE_EARLY_DEPTH_TEST_OPTIMIZATION
-                       float depth = interpolate(beta, gamma, alpha, v[0].p[2], v[1].p[2], v[2].p[2]);
-                    #endif
+                    float qx0 = px - zero.x;
+                    float qy0 = py - zero.y;
+                    float qx1 = px - one.x;
+                    float qy1 = py - one.y;
+                    float qx2 = px - two.x;
+                    float qy2 = py - two.y;
                     
-                    vec4 normal = interpolate(beta, gamma, alpha, v[0].normal, v[1].normal, v[2].normal);
-                    #if !USE_AVOID_NORMAL_NORMALIZATION_OPTIMIZATION
-                        normal.normalise();
-                    #endif
+                    float alpha = (qy0 * edge01.x - qx0 * edge01.y) * invArea;
+                    float beta = (qy1 * edge12.x - qx1 * edge12.y) * invArea;
+                    float gamma = (qy2 * edge20.x - qx2 * edge20.y) * invArea;
                     
+                    if (alpha < 0.f || beta < 0.f || gamma < 0.f) continue;
+                #else
+                    // Check if the pixel lies inside the triangle
+                    float alpha, beta, gamma;
+                    if (!getCoordinates(vec2D((float)x, (float)y), alpha, beta, gamma)) continue;
+                #endif
 
-                    // Perform Z-buffer test and apply shading
-                    #if !USE_EARLY_DEPTH_TEST_OPTIMIZATION
-                        if (!(renderer.zbuffer(x, y) > depth && depth > 0.001f)) continue;
-                    #endif
 
-                    // typical shader begin
-                    #if !USE_LIGHT_NORM_OUT_OPTIMIZATION
-                        L.omega_i.normalise();
-                    #endif
+                #if USE_EARLY_DEPTH_TEST_OPTIMIZATION
+                    float depth = interpolate(beta, gamma, alpha, v[0].p[2], v[1].p[2], v[2].p[2]);
+                    if (!(renderer.zbuffer(x, y) > depth && depth > 0.001f)) continue;
+                #endif
 
-                    float dot = std::max(vec4::dot(L.omega_i, normal), 0.0f);
-                    colour a = (c * kd) * (L.L * dot) + (L.ambient * ka); // using kd instead of ka for ambient
-                    // typical shader end
-                    unsigned char r, g, b;
-                    a.toRGB(r, g, b);
-                    renderer.canvas.draw(x, y, r, g, b);
-                    renderer.zbuffer(x, y) = depth;
+                // Interpolate color, depth, and normals
+                colour c = interpolate(beta, gamma, alpha, v[0].rgb, v[1].rgb, v[2].rgb);
+                c.clampColour();
+
+                #if !USE_EARLY_DEPTH_TEST_OPTIMIZATION
+                    float depth = interpolate(beta, gamma, alpha, v[0].p[2], v[1].p[2], v[2].p[2]);
+                #endif
+                
+                vec4 normal = interpolate(beta, gamma, alpha, v[0].normal, v[1].normal, v[2].normal);
+                #if !USE_AVOID_NORMAL_NORMALIZATION_OPTIMIZATION
+                    normal.normalise();
+                #endif
+                
+
+                // Perform Z-buffer test and apply shading
+                #if !USE_EARLY_DEPTH_TEST_OPTIMIZATION
+                    if (!(renderer.zbuffer(x, y) > depth && depth > 0.001f)) continue;
+                #endif
+
+                // typical shader begin
+                #if !USE_LIGHT_NORM_OUT_OPTIMIZATION
+                    L.omega_i.normalise();
+                #endif
+
+                float dot = std::max(vec4::dot(L.omega_i, normal), 0.0f);
+                colour a = (c * kd) * (L.L * dot) + (L.ambient * ka); // using kd instead of ka for ambient
+                // typical shader end
+                unsigned char r, g, b;
+                a.toRGB(r, g, b);
+                renderer.canvas.draw(x, y, r, g, b);
+                renderer.zbuffer(x, y) = depth;
                     
-                }
+                
             }
         }
     }
