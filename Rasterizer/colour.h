@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include "optimizations.h"
 
 // The `colour` class represents an RGB colour with floating-point precision.
 // It provides various utilities for manipulating and converting colours.
@@ -60,9 +61,15 @@ public:
     // - cg: Green component as an unsigned char
     // - cb: Blue component as an unsigned char
     void toRGB(unsigned char& cr, unsigned char& cg, unsigned char& cb) {
-        cr = static_cast<unsigned char>(std::floor(r * 255));
-        cg = static_cast<unsigned char>(std::floor(g * 255));
-        cb = static_cast<unsigned char>(std::floor(b * 255));
+        #if USE_AVOID_FLOOR_COLOR_OPTIMIZATION
+            cr = static_cast<unsigned char>(r * 255);
+            cg = static_cast<unsigned char>(g * 255);
+            cb = static_cast<unsigned char>(b * 255);
+        #else
+            cr = static_cast<unsigned char>(std::floor(r * 255));
+            cg = static_cast<unsigned char>(std::floor(g * 255));
+            cb = static_cast<unsigned char>(std::floor(b * 255));
+        #endif
     }
 
     // Scales the RGB components of the colour by a scalar value.
