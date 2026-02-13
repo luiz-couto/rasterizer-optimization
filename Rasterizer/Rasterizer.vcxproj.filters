@@ -56,5 +56,8 @@
     <ClInclude Include="optimizations.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="threadpool.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

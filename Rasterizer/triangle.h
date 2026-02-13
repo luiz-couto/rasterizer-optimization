@@ -11,20 +11,21 @@
 #include "optimizations.h"
 
 // Simple support class for a 2D vector
+template <typename T = float>
 class vec2D {
 public:
-    float x, y;
+    T x, y;
 
     // Default constructor initializes both components to 0
-    vec2D() { x = y = 0.f; };
+    vec2D() { x = y = T(0); };
 
     // Constructor initializes components with given values
-    vec2D(float _x, float _y) : x(_x), y(_y) {}
+    vec2D(T _x, T _y) : x(_x), y(_y) {}
 
     // Constructor initializes components from a vec4
     vec2D(vec4 v) {
-        x = v[0];
-        y = v[1];
+        x = static_cast<T>(v[0]);
+        y = static_cast<T>(v[1]);
     }
 
     // Display the vector components
@@ -47,8 +48,8 @@ class triangle {
     
     #if USE_STORE_VEC2D_INV_AREA_OPTIMIZATION
         float invArea;
-        vec2D zero, one, two;
-        vec2D edge01, edge12, edge20;
+        vec2D<float> zero, one, two;
+        vec2D<float> edge01, edge12, edge20;
     #endif
 
 public:
@@ -85,7 +86,7 @@ public:
     // Input Variables:
     // - v1, v2: Edges defining the vector
     // - p: Point for which coordinates are being calculated
-    float getC(vec2D v1, vec2D v2, vec2D p) {
+    float getC(vec2D<float> v1, vec2D<float> v2, vec2D<float> p) {
         vec2D e = v2 - v1;
         vec2D q = p - v1;
         return q.y * e.x - q.x * e.y;
@@ -97,7 +98,7 @@ public:
     // Output Variables:
     // - alpha, beta, gamma: Barycentric coordinates of the point
     // Returns true if the point is inside the triangle, false otherwise
-    bool getCoordinates(vec2D p, float& alpha, float& beta, float& gamma) {
+    bool getCoordinates(vec2D<float> p, float& alpha, float& beta, float& gamma) {
         #if USE_STORE_VEC2D_INV_AREA_OPTIMIZATION
             alpha = getC(zero, one, p) * invArea;
             beta = getC(one, two, p) * invArea;
@@ -140,6 +141,7 @@ public:
             L.omega_i.normalise();
         #endif
 
+        std::cout << "Drawing triangle with x: " << maxV.x << "," << minV.x << " and y : " << maxV.y << "," << minV.y << std::endl;
 
         // Iterate over the bounding box and check each pixel
         for (int y = (int)(minV.y); y < (int)ceil(maxV.y); y++) {
@@ -211,14 +213,15 @@ public:
     // Compute the 2D bounds of the triangle
     // Output Variables:
     // - minV, maxV: Minimum and maximum bounds in 2D space
-    void getBounds(vec2D& minV, vec2D& maxV) {
-        minV = vec2D(v[0].p);
-        maxV = vec2D(v[0].p);
+    template <typename T = float>
+    void getBounds(vec2D<T>& minV, vec2D<T>& maxV) {
+        minV = vec2D<T>(v[0].p);
+        maxV = vec2D<T>(v[0].p);
         for (unsigned int i = 1; i < 3; i++) {
-            minV.x = std::min(minV.x, v[i].p[0]);
-            minV.y = std::min(minV.y, v[i].p[1]);
-            maxV.x = std::max(maxV.x, v[i].p[0]);
-            maxV.y = std::max(maxV.y, v[i].p[1]);
+            minV.x = std::min(minV.x, static_cast<T>(v[i].p[0]));
+            minV.y = std::min(minV.y, static_cast<T>(v[i].p[1]));
+            maxV.x = std::max(maxV.x, static_cast<T>(v[i].p[0]));
+            maxV.y = std::max(maxV.y, static_cast<T>(v[i].p[1]));
         }
     }
 
@@ -227,12 +230,20 @@ public:
     // - canvas: Reference to the rendering canvas
     // Output Variables:
     // - minV, maxV: Clipped minimum and maximum bounds
-    void getBoundsWindow(GamesEngineeringBase::Window& canvas, vec2D& minV, vec2D& maxV) {
+    void getBoundsWindow(GamesEngineeringBase::Window& canvas, vec2D<float> &minV, vec2D<float> &maxV) {
         getBounds(minV, maxV);
         minV.x = std::max(minV.x, static_cast<float>(0));
         minV.y = std::max(minV.y, static_cast<float>(0));
         maxV.x = std::min(maxV.x, static_cast<float>(canvas.getWidth()));
         maxV.y = std::min(maxV.y, static_cast<float>(canvas.getHeight()));
+    }
+
+    void getBoundsWindow(GamesEngineeringBase::Window& canvas, vec2D<int> &minV, vec2D<int> &maxV) {
+        getBounds(minV, maxV);
+        minV.x = std::max(minV.x, static_cast<int>(0));
+        minV.y = std::max(minV.y, static_cast<int>(0));
+        maxV.x = std::min(maxV.x, static_cast<int>(canvas.getWidth()));
+        maxV.y = std::min(maxV.y, static_cast<int>(canvas.getHeight()));
     }
 
     // Debugging utility to display the triangle bounds on the canvas

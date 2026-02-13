@@ -142,6 +142,7 @@
     <ClInclude Include="optimizations.h" />
     <ClInclude Include="renderer.h" />
     <ClInclude Include="RNG.h" />
+    <ClInclude Include="threadpool.h" />
     <ClInclude Include="timer.h" />
     <ClInclude Include="triangle.h" />
     <ClInclude Include="vec4.h" />

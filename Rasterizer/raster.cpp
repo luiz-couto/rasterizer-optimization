@@ -19,6 +19,9 @@
 #include "timer.h"
 
 #include "optimizations.h"
+#include "threadpool.h"
+
+ThreadPool threadPool = ThreadPool();
 
 // Main rendering function that processes a mesh, transforms its vertices, applies lighting, and draws triangles on the canvas.
 // Input Variables:
@@ -31,6 +34,7 @@ void render(Renderer& renderer, Mesh* mesh, matrix& camera, Light& L) {
     matrix p = renderer.perspective * camera * mesh->world;
 
     // Iterate through all triangles in the mesh
+    // std::cout << "Rendering mesh with " << mesh->triangles.size() << " triangles...\n";
     for (triIndices& ind : mesh->triangles) {
         Vertex t[3]; // Temporary array to store transformed triangle vertices
 
@@ -75,6 +79,67 @@ void render(Renderer& renderer, Mesh* mesh, matrix& camera, Light& L) {
         tri.draw(renderer, L, mesh->ka, mesh->kd);
     }
 }
+
+
+
+void renderUsingThreads(Renderer& renderer, Mesh* mesh, matrix& camera, Light& L) {
+    matrix p = renderer.perspective * camera * mesh->world;
+
+    
+}
+
+// render function using threads
+// void render2(Renderer& renderer, Mesh* mesh, matrix& camera, Light& L) {
+    
+//     // Initialize thread pool on first use
+//     if (!g_threadPool) {
+//         unsigned int numCPUs = 4;
+//         g_threadPool = std::make_unique<ThreadPool>(numCPUs);
+//     }
+    
+//     // Combine perspective, camera, and world transformations for the mesh
+//     matrix p = renderer.perspective * camera * mesh->world;
+//     float canvasWidth = static_cast<float>(renderer.canvas.getWidth());
+//     float canvasHeight = static_cast<float>(renderer.canvas.getHeight());
+
+//     unsigned int numThreads = g_threadPool->getThreadCount();
+//     uint32_t workSize = mesh->triangles.size() / numThreads;
+
+//     // Enqueue tasks to the thread pool
+//     std::vector<std::future<void>> futures;
+//     futures.reserve(numThreads);
+
+//     for (unsigned int i = 0; i < numThreads; i++) {
+//         uint32_t start = i * workSize;
+//         uint32_t end = start + workSize;
+//         if (i == numThreads - 1) {
+//             end = mesh->triangles.size();
+//         }
+
+//         futures.push_back(g_threadPool->enqueue(
+//             renderThread, 
+//             std::cref(p),
+//             std::cref(mesh->world),
+//             std::cref(mesh->vSOA.positions),
+//             std::cref(mesh->vSOA.normals),
+//             std::cref(mesh->vSOA.colors),
+//             std::cref(mesh->triangles),
+//             start,
+//             end,
+//             mesh->ka,
+//             mesh->kd,
+//             canvasWidth,
+//             canvasHeight,
+//             std::ref(renderer),
+//             std::ref(L)
+//         ));
+//     }
+
+//     // Wait for all tasks to complete
+//     for (auto& future : futures) {
+//         future.get();
+//     }
+// }
 
 // Test scene function to demonstrate rendering with user-controlled transformations
 // No input variables
@@ -204,9 +269,12 @@ void scene1() {
             }
         }
 
-        for (auto& m : scene)
+        for (auto& m : scene) {
             render(renderer, m, camera, L);
+        }
+
         renderer.present();
+        running = false;
     }
 
     for (auto& m : scene)
@@ -321,6 +389,7 @@ void testTimer() {
 // No input variables
 int main() {
     // Uncomment the desired scene function to run
+
     scene1();
     //scene2();
     //sceneTest(); 
