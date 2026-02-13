@@ -80,66 +80,44 @@ void render(Renderer& renderer, Mesh* mesh, matrix& camera, Light& L) {
     }
 }
 
-
+struct Triangle {
+    vec2D<int> minV;
+    vec2D<int> maxV;
+    triangle tri;
+};
 
 void renderUsingThreads(Renderer& renderer, Mesh* mesh, matrix& camera, Light& L) {
     matrix p = renderer.perspective * camera * mesh->world;
+    std::vector<Triangle> triangles;
 
+    for (triIndices& ind : mesh->triangles) {
+        Vertex t[3];
+        for (unsigned int i = 0; i < 3; i++) {
+            t[i].p = p * mesh->vSOA.positions[ind.v[i]];
+            t[i].p.divideW();
+            t[i].normal = mesh->world * mesh->vSOA.normals[ind.v[i]];
+            t[i].normal.normalise();
+
+            // Map normalized device coordinates to screen space
+            t[i].p[0] = (t[i].p[0] + 1.f) * 0.5f * static_cast<float>(renderer.canvas.getWidth());
+            t[i].p[1] = (t[i].p[1] + 1.f) * 0.5f * static_cast<float>(renderer.canvas.getHeight());
+            t[i].p[1] = renderer.canvas.getHeight() - t[i].p[1]; // Invert y-axis
+
+            t[i].rgb = mesh->vSOA.colors[ind.v[i]];
+        }
+
+        if (fabs(t[0].p[2]) > 1.0f || fabs(t[1].p[2]) > 1.0f || fabs(t[2].p[2]) > 1.0f) continue;
+        
+        vec2D<int> minV, maxV;
+        triangle tri(t[0], t[1], t[2]);
+        
+        tri.getBoundsWindow(renderer.canvas, minV, maxV);
+        triangles.push_back({ minV, maxV, tri });
+    }
+
+    
     
 }
-
-// render function using threads
-// void render2(Renderer& renderer, Mesh* mesh, matrix& camera, Light& L) {
-    
-//     // Initialize thread pool on first use
-//     if (!g_threadPool) {
-//         unsigned int numCPUs = 4;
-//         g_threadPool = std::make_unique<ThreadPool>(numCPUs);
-//     }
-    
-//     // Combine perspective, camera, and world transformations for the mesh
-//     matrix p = renderer.perspective * camera * mesh->world;
-//     float canvasWidth = static_cast<float>(renderer.canvas.getWidth());
-//     float canvasHeight = static_cast<float>(renderer.canvas.getHeight());
-
-//     unsigned int numThreads = g_threadPool->getThreadCount();
-//     uint32_t workSize = mesh->triangles.size() / numThreads;
-
-//     // Enqueue tasks to the thread pool
-//     std::vector<std::future<void>> futures;
-//     futures.reserve(numThreads);
-
-//     for (unsigned int i = 0; i < numThreads; i++) {
-//         uint32_t start = i * workSize;
-//         uint32_t end = start + workSize;
-//         if (i == numThreads - 1) {
-//             end = mesh->triangles.size();
-//         }
-
-//         futures.push_back(g_threadPool->enqueue(
-//             renderThread, 
-//             std::cref(p),
-//             std::cref(mesh->world),
-//             std::cref(mesh->vSOA.positions),
-//             std::cref(mesh->vSOA.normals),
-//             std::cref(mesh->vSOA.colors),
-//             std::cref(mesh->triangles),
-//             start,
-//             end,
-//             mesh->ka,
-//             mesh->kd,
-//             canvasWidth,
-//             canvasHeight,
-//             std::ref(renderer),
-//             std::ref(L)
-//         ));
-//     }
-
-//     // Wait for all tasks to complete
-//     for (auto& future : futures) {
-//         future.get();
-//     }
-// }
 
 // Test scene function to demonstrate rendering with user-controlled transformations
 // No input variables
@@ -270,11 +248,10 @@ void scene1() {
         }
 
         for (auto& m : scene) {
-            render(renderer, m, camera, L);
+            renderUsingThreads(renderer, m, camera, L);
         }
 
         renderer.present();
-        running = false;
     }
 
     for (auto& m : scene)
