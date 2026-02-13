@@ -17,8 +17,10 @@ private:
     std::condition_variable notify;
     bool stop = false;
 
+    size_t numThreads;
+
 public:
-    ThreadPool(size_t numThreads = std::thread::hardware_concurrency()) {
+    ThreadPool(size_t _numThreads = std::thread::hardware_concurrency()): numThreads(_numThreads) {
         for (size_t i = 0; i < numThreads; ++i) {
             threads.emplace_back([this] {
                 while (true) {
@@ -50,6 +52,10 @@ public:
             jobs.emplace(std::move(job));
         }
         notify.notify_one();
+    }
+
+    size_t getNumThreads() {
+        return numThreads;
     }
 
     ~ThreadPool() {
