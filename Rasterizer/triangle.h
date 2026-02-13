@@ -141,7 +141,7 @@ public:
             L.omega_i.normalise();
         #endif
 
-        std::cout << "Drawing triangle with x: " << maxV.x << "," << minV.x << " and y : " << maxV.y << "," << minV.y << std::endl;
+        //std::cout << "Drawing triangle with x: " << maxV.x << "," << minV.x << " and y : " << maxV.y << "," << minV.y << std::endl;
 
         // Iterate over the bounding box and check each pixel
         for (int y = (int)(minV.y); y < (int)ceil(maxV.y); y++) {
@@ -202,6 +202,62 @@ public:
                 float dot = std::max(vec4::dot(L.omega_i, normal), 0.0f);
                 colour a = (c * kd) * (L.L * dot) + (L.ambient * ka); // using kd instead of ka for ambient
                 // typical shader end
+                unsigned char r, g, b;
+                a.toRGB(r, g, b);
+                renderer.canvas.draw(x, y, r, g, b);
+                renderer.zbuffer(x, y) = depth;
+            }
+        }
+    }
+
+    // Draw the triangle on the canvas with Y-range constraints for multithreading
+    // Input Variables:
+    // - renderer: Renderer object for drawing
+    // - L: Light object for shading calculations
+    // - ka, kd: Ambient and diffuse lighting coefficients
+    // - minV, maxV: Pre-calculated bounds of the triangle
+    // - startY, endY: Y-coordinate range this thread is responsible for
+    void draw(Renderer& renderer, Light& L, float ka, float kd, vec2D<int> minV, vec2D<int> maxV, int startY, int endY) {
+        // Skip very small triangles
+        if (area < 1.f) return;
+
+        minV.y = std::max(minV.y, startY);
+        maxV.y = std::min(maxV.y, endY);
+
+        L.omega_i.normalise();
+
+        // Iterate over the bounding box and check each pixel
+        for (int y = minV.y; y < maxV.y; y++) {
+            for (int x = minV.x; x < maxV.x; x++) {
+                float px = (float)x;
+                float py = (float)y;
+
+                float qx0 = px - zero.x;
+                float qy0 = py - zero.y;
+                float qx1 = px - one.x;
+                float qy1 = py - one.y;
+                float qx2 = px - two.x;
+                float qy2 = py - two.y;
+                
+                float alpha = (qy0 * edge01.x - qx0 * edge01.y) * invArea;
+                if (alpha < 0.f) continue;
+                float beta = (qy1 * edge12.x - qx1 * edge12.y) * invArea;
+                if (beta < 0.f) continue;
+                float gamma = (qy2 * edge20.x - qx2 * edge20.y) * invArea;
+                if (gamma < 0.f) continue;
+
+                float depth = interpolate(beta, gamma, alpha, v[0].p[2], v[1].p[2], v[2].p[2]);
+                if (!(renderer.zbuffer(x, y) > depth && depth > 0.001f)) continue;
+                
+
+                // Interpolate color, depth, and normals
+                colour c = interpolate(beta, gamma, alpha, v[0].rgb, v[1].rgb, v[2].rgb);
+                c.clampColour();
+                vec4 normal = interpolate(beta, gamma, alpha, v[0].normal, v[1].normal, v[2].normal);
+
+                float dot = std::max(vec4::dot(L.omega_i, normal), 0.0f);
+                colour a = (c * kd) * (L.L * dot) + (L.ambient * ka);
+
                 unsigned char r, g, b;
                 a.toRGB(r, g, b);
                 renderer.canvas.draw(x, y, r, g, b);

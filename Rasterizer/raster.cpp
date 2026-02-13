@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <chrono>
 #include <thread>
+#include <atomic>
 
 #include <cmath>
 #include "matrix.h"
@@ -21,7 +22,7 @@
 #include "optimizations.h"
 #include "threadpool.h"
 
-ThreadPool threadPool = ThreadPool();
+ThreadPool threadPool = ThreadPool(6);
 
 // Main rendering function that processes a mesh, transforms its vertices, applies lighting, and draws triangles on the canvas.
 // Input Variables:
@@ -115,8 +116,50 @@ void renderUsingThreads(Renderer& renderer, Mesh* mesh, matrix& camera, Light& L
         triangles.push_back({ minV, maxV, tri });
     }
 
+    if (triangles.empty()) return;
+
+    // Find global min and max boundaries across all triangles
+    vec2D<int> globalMin = triangles[0].minV;
+    vec2D<int> globalMax = triangles[0].maxV;
     
+    for (const auto& t : triangles) {
+        globalMin.x = std::min(globalMin.x, t.minV.x);
+        globalMin.y = std::min(globalMin.y, t.minV.y);
+        globalMax.x = std::max(globalMax.x, t.maxV.x);
+        globalMax.y = std::max(globalMax.y, t.maxV.y);
+    }
+
+    // Divide work into horizontal strips, one per thread
+    size_t numThreads = threadPool.getNumThreads();
+    int totalHeight = globalMax.y - globalMin.y;
     
+    if (totalHeight <= 0) return;
+
+    // Synchronization: count completed jobs
+    std::atomic<size_t> completedJobs(0);
+    
+    // Enqueue jobs for each thread
+    for (size_t i = 0; i < numThreads; ++i) {
+        int startY = globalMin.y + (i * totalHeight) / numThreads;
+        int endY = (i == numThreads - 1) ? globalMax.y : (globalMin.y + ((i + 1) * totalHeight) / numThreads);
+        
+        threadPool.enqueue([&renderer, &triangles, &L, &completedJobs, ka = mesh->ka, kd = mesh->kd, startY, endY]() {
+            // Each thread processes all triangles but only draws pixels in its Y range
+            for (auto& t : triangles) {
+                // Skip triangles that don't overlap with this thread's region
+                if (t.maxV.y < startY || t.minV.y >= endY) continue;
+                
+                // Draw the triangle (will only affect pixels in this thread's region)
+                t.tri.draw(renderer, L, ka, kd, t.minV, t.maxV, startY, endY);
+            }
+            completedJobs++;
+        });
+    }
+
+    // Wait for all threads to complete
+    while (completedJobs < numThreads) {
+        std::this_thread::yield();
+    }
 }
 
 // Test scene function to demonstrate rendering with user-controlled transformations
