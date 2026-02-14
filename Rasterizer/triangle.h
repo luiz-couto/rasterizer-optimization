@@ -57,14 +57,14 @@ class triangle {
     #endif
 
     #if USE_SIMD_OPTIMIZATION && USE_STORE_VEC2D_INV_AREA_OPTIMIZATION
-        __m128 zero_x_vec, zero_y_vec;
-        __m128 one_x_vec, one_y_vec;
-        __m128 two_x_vec, two_y_vec;
-        __m128 edge01_x_vec, edge01_y_vec;
-        __m128 edge12_x_vec, edge12_y_vec;
-        __m128 edge20_x_vec, edge20_y_vec;
-        __m128 invArea_vec;
-        __m128 zero_vec;
+        __m128 zeroXVec, zeroYvec;
+        __m128 oneXvec, oneYvec;
+        __m128 twoXvec, twoYvec;
+        __m128 edge01Xvec, edge01Yvec;
+        __m128 edge12Xvec, edge12Yvec;
+        __m128 edge20Xvec, edge20Yvec;
+        __m128 invAreaVec;
+        __m128 zeroVec;
     #endif
 
 public:
@@ -97,20 +97,26 @@ public:
         #endif
 
         #if USE_SIMD_OPTIMIZATION && USE_STORE_VEC2D_INV_AREA_OPTIMIZATION
-            zero_x_vec = _mm_set1_ps(zero.x);
-            zero_y_vec = _mm_set1_ps(zero.y);
-            one_x_vec = _mm_set1_ps(one.x);
-            one_y_vec = _mm_set1_ps(one.y);
-            two_x_vec = _mm_set1_ps(two.x);
-            two_y_vec = _mm_set1_ps(two.y);
-            edge01_x_vec = _mm_set1_ps(edge01.x);
-            edge01_y_vec = _mm_set1_ps(edge01.y);
-            edge12_x_vec = _mm_set1_ps(edge12.x);
-            edge12_y_vec = _mm_set1_ps(edge12.y);
-            edge20_x_vec = _mm_set1_ps(edge20.x);
-            edge20_y_vec = _mm_set1_ps(edge20.y);
-            invArea_vec = _mm_set1_ps(invArea);
-            zero_vec = _mm_setzero_ps();
+            zeroXVec = _mm_set1_ps(zero.x);
+            zeroYvec = _mm_set1_ps(zero.y);
+    
+            oneXvec = _mm_set1_ps(one.x);
+            oneYvec = _mm_set1_ps(one.y);
+
+            twoXvec = _mm_set1_ps(two.x);
+            twoYvec = _mm_set1_ps(two.y);
+
+            edge01Xvec = _mm_set1_ps(edge01.x);
+            edge01Yvec = _mm_set1_ps(edge01.y);
+
+            edge12Xvec = _mm_set1_ps(edge12.x);
+            edge12Yvec = _mm_set1_ps(edge12.y);
+
+            edge20Xvec = _mm_set1_ps(edge20.x);
+            edge20Yvec = _mm_set1_ps(edge20.y);
+
+            invAreaVec = _mm_set1_ps(invArea);
+            zeroVec = _mm_setzero_ps();
         #endif
     }
 
@@ -181,55 +187,55 @@ public:
             int xMax = (int)ceil(maxV.x);
             
             #if USE_SIMD_OPTIMIZATION && USE_STORE_VEC2D_INV_AREA_OPTIMIZATION
-                __m128 py_vec = _mm_set1_ps((float)y);
+                __m128 pyVec = _mm_set1_ps((float)y);
                 
                 // Process 4 pixels at a time
                 for (; x + 3 < xMax; x += 4) {
-                    __m128 px_vec = _mm_set_ps((float)(x + 3), (float)(x + 2), (float)(x + 1), (float)x);
+                    __m128 pxVec = _mm_setr_ps((float)x, (float)(x + 1), (float)(x + 2), (float)(x + 3));
                     
                     // Compute qx0, qy0, qx1, qy1, qx2, qy2 for 4 pixels
-                    __m128 qx0_vec = _mm_sub_ps(px_vec, zero_x_vec);
-                    __m128 qy0_vec = _mm_sub_ps(py_vec, zero_y_vec);
-                    __m128 qx1_vec = _mm_sub_ps(px_vec, one_x_vec);
-                    __m128 qy1_vec = _mm_sub_ps(py_vec, one_y_vec);
-                    __m128 qx2_vec = _mm_sub_ps(px_vec, two_x_vec);
-                    __m128 qy2_vec = _mm_sub_ps(py_vec, two_y_vec);
+                    __m128 qx0Vec = _mm_sub_ps(pxVec, zeroXVec);
+                    __m128 qy0Vec = _mm_sub_ps(pyVec, zeroYvec);
+                    __m128 qx1Vec = _mm_sub_ps(pxVec, oneXvec);
+                    __m128 qy1Vec = _mm_sub_ps(pyVec, oneYvec);
+                    __m128 qx2Vec = _mm_sub_ps(pxVec, twoXvec);
+                    __m128 qy2Vec = _mm_sub_ps(pyVec, twoYvec);
                     
                     // Compute barycentric coordinates for 4 pixels - alpha first for early exit
-                    __m128 alpha_vec = _mm_mul_ps(_mm_sub_ps(_mm_mul_ps(qy0_vec, edge01_x_vec), _mm_mul_ps(qx0_vec, edge01_y_vec)), invArea_vec);
-                    __m128 alpha_mask = _mm_cmpge_ps(alpha_vec, zero_vec);
+                    __m128 alphaVec = _mm_mul_ps(_mm_sub_ps(_mm_mul_ps(qy0Vec, edge01Xvec), _mm_mul_ps(qx0Vec, edge01Yvec)), invAreaVec);
+                    __m128 alphaMask = _mm_cmpge_ps(alphaVec, zeroVec);
                     
                     // Early exit if all alphas are negative
-                    if (_mm_movemask_ps(alpha_mask) == 0) continue;
+                    if (_mm_movemask_ps(alphaMask) == 0) continue;
                     
                     // Compute beta
-                    __m128 beta_vec = _mm_mul_ps(_mm_sub_ps(_mm_mul_ps(qy1_vec, edge12_x_vec), _mm_mul_ps(qx1_vec, edge12_y_vec)), invArea_vec);
-                    __m128 beta_mask = _mm_cmpge_ps(beta_vec, zero_vec);
+                    __m128 betaVec = _mm_mul_ps(_mm_sub_ps(_mm_mul_ps(qy1Vec, edge12Xvec), _mm_mul_ps(qx1Vec, edge12Yvec)), invAreaVec);
+                    __m128 betaMask = _mm_cmpge_ps(betaVec, zeroVec);
                     
                     // Early exit if no pixels pass both alpha and beta
-                    __m128 alpha_beta_mask = _mm_and_ps(alpha_mask, beta_mask);
-                    if (_mm_movemask_ps(alpha_beta_mask) == 0) continue;
+                    __m128 alphaBetaMask = _mm_and_ps(alphaMask, betaMask);
+                    if (_mm_movemask_ps(alphaBetaMask) == 0) continue;
                     
                     // Compute gamma
-                    __m128 gamma_vec = _mm_mul_ps(_mm_sub_ps(_mm_mul_ps(qy2_vec, edge20_x_vec), _mm_mul_ps(qx2_vec, edge20_y_vec)), invArea_vec);
-                    __m128 gamma_mask = _mm_cmpge_ps(gamma_vec, zero_vec);
-                    __m128 inside_mask = _mm_and_ps(alpha_beta_mask, gamma_mask);
+                    __m128 gammaVec = _mm_mul_ps(_mm_sub_ps(_mm_mul_ps(qy2Vec, edge20Xvec), _mm_mul_ps(qx2Vec, edge20Yvec)), invAreaVec);
+                    __m128 gammaMask = _mm_cmpge_ps(gammaVec, zeroVec);
+                    __m128 insideMask = _mm_and_ps(alphaBetaMask, gammaMask);
                     
                     // Extract mask and process pixels individually
-                    int mask = _mm_movemask_ps(inside_mask);
+                    int mask = _mm_movemask_ps(insideMask);
                     
                     // Process each pixel that passed the test
-                    float alpha_arr[4], beta_arr[4], gamma_arr[4];
-                    _mm_store_ps(alpha_arr, alpha_vec);
-                    _mm_store_ps(beta_arr, beta_vec);
-                    _mm_store_ps(gamma_arr, gamma_vec);
+                    float alphaArr[4], betaArr[4], gammaArr[4];
+                    _mm_store_ps(alphaArr, alphaVec);
+                    _mm_store_ps(betaArr, betaVec);
+                    _mm_store_ps(gammaArr, gammaVec);
                     
                     for (int i = 0; i < 4; i++) {
                         if (!(mask & (1 << i))) continue;
                         
-                        float alpha = alpha_arr[i];
-                        float beta = beta_arr[i];
-                        float gamma = gamma_arr[i];
+                        float alpha = alphaArr[i];
+                        float beta = betaArr[i];
+                        float gamma = gammaArr[i];
                         int px = x + i;
 
                         #if USE_EARLY_DEPTH_TEST_OPTIMIZATION
@@ -362,56 +368,55 @@ public:
             int xMax = maxV.x;
             
             #if USE_SIMD_OPTIMIZATION && USE_STORE_VEC2D_INV_AREA_OPTIMIZATION
-                // SIMD path: Process 4 pixels at a time
-                __m128 py_vec = _mm_set1_ps((float)y);
+                __m128 pyVec = _mm_set1_ps((float)y);
                 
                 // Process 4 pixels at a time
                 for (; x + 3 < xMax; x += 4) {
-                    __m128 px_vec = _mm_set_ps((float)(x + 3), (float)(x + 2), (float)(x + 1), (float)x);
+                    __m128 pxVec = _mm_setr_ps((float)x, (float)(x + 1), (float)(x + 2), (float)(x + 3));
                     
                     // Compute qx0, qy0, qx1, qy1, qx2, qy2 for 4 pixels
-                    __m128 qx0_vec = _mm_sub_ps(px_vec, zero_x_vec);
-                    __m128 qy0_vec = _mm_sub_ps(py_vec, zero_y_vec);
-                    __m128 qx1_vec = _mm_sub_ps(px_vec, one_x_vec);
-                    __m128 qy1_vec = _mm_sub_ps(py_vec, one_y_vec);
-                    __m128 qx2_vec = _mm_sub_ps(px_vec, two_x_vec);
-                    __m128 qy2_vec = _mm_sub_ps(py_vec, two_y_vec);
+                    __m128 qx0Vec = _mm_sub_ps(pxVec, zeroXVec);
+                    __m128 qy0Vec = _mm_sub_ps(pyVec, zeroYvec);
+                    __m128 qx1Vec = _mm_sub_ps(pxVec, oneXvec);
+                    __m128 qy1Vec = _mm_sub_ps(pyVec, oneYvec);
+                    __m128 qx2Vec = _mm_sub_ps(pxVec, twoXvec);
+                    __m128 qy2Vec = _mm_sub_ps(pyVec, twoYvec);
                     
                     // Compute barycentric coordinates for 4 pixels - alpha first for early exit
-                    __m128 alpha_vec = _mm_mul_ps(_mm_sub_ps(_mm_mul_ps(qy0_vec, edge01_x_vec), _mm_mul_ps(qx0_vec, edge01_y_vec)), invArea_vec);
-                    __m128 alpha_mask = _mm_cmpge_ps(alpha_vec, zero_vec);
+                    __m128 alphaVec = _mm_mul_ps(_mm_sub_ps(_mm_mul_ps(qy0Vec, edge01Xvec), _mm_mul_ps(qx0Vec, edge01Yvec)), invAreaVec);
+                    __m128 alphaMask = _mm_cmpge_ps(alphaVec, zeroVec);
                     
                     // Early exit if all alphas are negative
-                    if (_mm_movemask_ps(alpha_mask) == 0) continue;
+                    if (_mm_movemask_ps(alphaMask) == 0) continue;
                     
                     // Compute beta
-                    __m128 beta_vec = _mm_mul_ps(_mm_sub_ps(_mm_mul_ps(qy1_vec, edge12_x_vec), _mm_mul_ps(qx1_vec, edge12_y_vec)), invArea_vec);
-                    __m128 beta_mask = _mm_cmpge_ps(beta_vec, zero_vec);
+                    __m128 betaVec = _mm_mul_ps(_mm_sub_ps(_mm_mul_ps(qy1Vec, edge12Xvec), _mm_mul_ps(qx1Vec, edge12Yvec)), invAreaVec);
+                    __m128 betaMask = _mm_cmpge_ps(betaVec, zeroVec);
                     
                     // Early exit if no pixels pass both alpha and beta
-                    __m128 alpha_beta_mask = _mm_and_ps(alpha_mask, beta_mask);
-                    if (_mm_movemask_ps(alpha_beta_mask) == 0) continue;
+                    __m128 alphaBetaMask = _mm_and_ps(alphaMask, betaMask);
+                    if (_mm_movemask_ps(alphaBetaMask) == 0) continue;
                     
                     // Compute gamma
-                    __m128 gamma_vec = _mm_mul_ps(_mm_sub_ps(_mm_mul_ps(qy2_vec, edge20_x_vec), _mm_mul_ps(qx2_vec, edge20_y_vec)), invArea_vec);
-                    __m128 gamma_mask = _mm_cmpge_ps(gamma_vec, zero_vec);
-                    __m128 inside_mask = _mm_and_ps(alpha_beta_mask, gamma_mask);
+                    __m128 gammaVec = _mm_mul_ps(_mm_sub_ps(_mm_mul_ps(qy2Vec, edge20Xvec), _mm_mul_ps(qx2Vec, edge20Yvec)), invAreaVec);
+                    __m128 gammaMask = _mm_cmpge_ps(gammaVec, zeroVec);
+                    __m128 insideMask = _mm_and_ps(alphaBetaMask, gammaMask);
                     
                     // Extract mask and process pixels individually
-                    int mask = _mm_movemask_ps(inside_mask);
+                    int mask = _mm_movemask_ps(insideMask);
                     
                     // Process each pixel that passed the test
-                    float alpha_arr[4], beta_arr[4], gamma_arr[4];
-                    _mm_store_ps(alpha_arr, alpha_vec);
-                    _mm_store_ps(beta_arr, beta_vec);
-                    _mm_store_ps(gamma_arr, gamma_vec);
+                    float alphaArr[4], betaArr[4], gammaArr[4];
+                    _mm_store_ps(alphaArr, alphaVec);
+                    _mm_store_ps(betaArr, betaVec);
+                    _mm_store_ps(gammaArr, gammaVec);
 
                     for (int i = 0; i < 4; i++) {
                         if (!(mask & (1 << i))) continue;
                         
-                        float alpha = alpha_arr[i];
-                        float beta = beta_arr[i];
-                        float gamma = gamma_arr[i];
+                        float alpha = alphaArr[i];
+                        float beta = betaArr[i];
+                        float gamma = gammaArr[i];
                         int px = x + i;
 
                         float depth = interpolate(beta, gamma, alpha, v[0].p[2], v[1].p[2], v[2].p[2]);
