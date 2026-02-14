@@ -56,6 +56,17 @@ class triangle {
         vec2D<float> edge01, edge12, edge20;
     #endif
 
+    #if USE_SIMD_OPTIMIZATION && USE_STORE_VEC2D_INV_AREA_OPTIMIZATION
+        __m128 zero_x_vec, zero_y_vec;
+        __m128 one_x_vec, one_y_vec;
+        __m128 two_x_vec, two_y_vec;
+        __m128 edge01_x_vec, edge01_y_vec;
+        __m128 edge12_x_vec, edge12_y_vec;
+        __m128 edge20_x_vec, edge20_y_vec;
+        __m128 invArea_vec;
+        __m128 zero_vec;
+    #endif
+
 public:
     // Constructor initializes the triangle with three vertices
     // Input Variables:
@@ -83,6 +94,23 @@ public:
             edge12.y = two.y - one.y;
             edge20.x = zero.x - two.x;
             edge20.y = zero.y - two.y;
+        #endif
+
+        #if USE_SIMD_OPTIMIZATION && USE_STORE_VEC2D_INV_AREA_OPTIMIZATION
+            zero_x_vec = _mm_set1_ps(zero.x);
+            zero_y_vec = _mm_set1_ps(zero.y);
+            one_x_vec = _mm_set1_ps(one.x);
+            one_y_vec = _mm_set1_ps(one.y);
+            two_x_vec = _mm_set1_ps(two.x);
+            two_y_vec = _mm_set1_ps(two.y);
+            edge01_x_vec = _mm_set1_ps(edge01.x);
+            edge01_y_vec = _mm_set1_ps(edge01.y);
+            edge12_x_vec = _mm_set1_ps(edge12.x);
+            edge12_y_vec = _mm_set1_ps(edge12.y);
+            edge20_x_vec = _mm_set1_ps(edge20.x);
+            edge20_y_vec = _mm_set1_ps(edge20.y);
+            invArea_vec = _mm_set1_ps(invArea);
+            zero_vec = _mm_setzero_ps();
         #endif
     }
 
@@ -153,22 +181,7 @@ public:
             int xMax = (int)ceil(maxV.x);
             
             #if USE_SIMD_OPTIMIZATION && USE_STORE_VEC2D_INV_AREA_OPTIMIZATION
-                // SIMD path: Process 4 pixels at a time
                 __m128 py_vec = _mm_set1_ps((float)y);
-                __m128 zero_x_vec = _mm_set1_ps(zero.x);
-                __m128 zero_y_vec = _mm_set1_ps(zero.y);
-                __m128 one_x_vec = _mm_set1_ps(one.x);
-                __m128 one_y_vec = _mm_set1_ps(one.y);
-                __m128 two_x_vec = _mm_set1_ps(two.x);
-                __m128 two_y_vec = _mm_set1_ps(two.y);
-                __m128 edge01_x_vec = _mm_set1_ps(edge01.x);
-                __m128 edge01_y_vec = _mm_set1_ps(edge01.y);
-                __m128 edge12_x_vec = _mm_set1_ps(edge12.x);
-                __m128 edge12_y_vec = _mm_set1_ps(edge12.y);
-                __m128 edge20_x_vec = _mm_set1_ps(edge20.x);
-                __m128 edge20_y_vec = _mm_set1_ps(edge20.y);
-                __m128 invArea_vec = _mm_set1_ps(invArea);
-                __m128 zero_vec = _mm_setzero_ps();
                 
                 // Process 4 pixels at a time
                 for (; x + 3 < xMax; x += 4) {
@@ -348,23 +361,9 @@ public:
             int x = minV.x;
             int xMax = maxV.x;
             
-            #if USE_SIMD_OPTIMIZATION
+            #if USE_SIMD_OPTIMIZATION && USE_STORE_VEC2D_INV_AREA_OPTIMIZATION
                 // SIMD path: Process 4 pixels at a time
                 __m128 py_vec = _mm_set1_ps((float)y);
-                __m128 zero_x_vec = _mm_set1_ps(zero.x);
-                __m128 zero_y_vec = _mm_set1_ps(zero.y);
-                __m128 one_x_vec = _mm_set1_ps(one.x);
-                __m128 one_y_vec = _mm_set1_ps(one.y);
-                __m128 two_x_vec = _mm_set1_ps(two.x);
-                __m128 two_y_vec = _mm_set1_ps(two.y);
-                __m128 edge01_x_vec = _mm_set1_ps(edge01.x);
-                __m128 edge01_y_vec = _mm_set1_ps(edge01.y);
-                __m128 edge12_x_vec = _mm_set1_ps(edge12.x);
-                __m128 edge12_y_vec = _mm_set1_ps(edge12.y);
-                __m128 edge20_x_vec = _mm_set1_ps(edge20.x);
-                __m128 edge20_y_vec = _mm_set1_ps(edge20.y);
-                __m128 invArea_vec = _mm_set1_ps(invArea);
-                __m128 zero_vec = _mm_setzero_ps();
                 
                 // Process 4 pixels at a time
                 for (; x + 3 < xMax; x += 4) {
