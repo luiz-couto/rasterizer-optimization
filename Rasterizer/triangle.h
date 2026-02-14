@@ -10,6 +10,10 @@
 
 #include "optimizations.h"
 
+#if USE_SIMD_OPTIMIZATION
+#include <immintrin.h>  // SSE/AVX intrinsics
+#endif
+
 // Simple support class for a 2D vector
 template <typename T = float>
 class vec2D {
@@ -145,22 +149,136 @@ public:
 
         // Iterate over the bounding box and check each pixel
         for (int y = (int)(minV.y); y < (int)ceil(maxV.y); y++) {
-            for (int x = (int)(minV.x); x < (int)ceil(maxV.x); x++) {
+            int x = (int)(minV.x);
+            int xMax = (int)ceil(maxV.x);
+            
+            #if USE_SIMD_OPTIMIZATION && USE_STORE_VEC2D_INV_AREA_OPTIMIZATION
+                // SIMD path: Process 4 pixels at a time
+                __m128 py_vec = _mm_set1_ps((float)y);
+                __m128 zero_x_vec = _mm_set1_ps(zero.x);
+                __m128 zero_y_vec = _mm_set1_ps(zero.y);
+                __m128 one_x_vec = _mm_set1_ps(one.x);
+                __m128 one_y_vec = _mm_set1_ps(one.y);
+                __m128 two_x_vec = _mm_set1_ps(two.x);
+                __m128 two_y_vec = _mm_set1_ps(two.y);
+                __m128 edge01_x_vec = _mm_set1_ps(edge01.x);
+                __m128 edge01_y_vec = _mm_set1_ps(edge01.y);
+                __m128 edge12_x_vec = _mm_set1_ps(edge12.x);
+                __m128 edge12_y_vec = _mm_set1_ps(edge12.y);
+                __m128 edge20_x_vec = _mm_set1_ps(edge20.x);
+                __m128 edge20_y_vec = _mm_set1_ps(edge20.y);
+                __m128 invArea_vec = _mm_set1_ps(invArea);
+                __m128 zero_vec = _mm_setzero_ps();
+                
+                // Process 4 pixels at a time
+                for (; x + 3 < xMax; x += 4) {
+                    __m128 px_vec = _mm_set_ps((float)(x + 3), (float)(x + 2), (float)(x + 1), (float)x);
+                    
+                    // Compute qx0, qy0, qx1, qy1, qx2, qy2 for 4 pixels
+                    __m128 qx0_vec = _mm_sub_ps(px_vec, zero_x_vec);
+                    __m128 qy0_vec = _mm_sub_ps(py_vec, zero_y_vec);
+                    __m128 qx1_vec = _mm_sub_ps(px_vec, one_x_vec);
+                    __m128 qy1_vec = _mm_sub_ps(py_vec, one_y_vec);
+                    __m128 qx2_vec = _mm_sub_ps(px_vec, two_x_vec);
+                    __m128 qy2_vec = _mm_sub_ps(py_vec, two_y_vec);
+                    
+                    // Compute barycentric coordinates for 4 pixels - alpha first for early exit
+                    __m128 alpha_vec = _mm_mul_ps(_mm_sub_ps(_mm_mul_ps(qy0_vec, edge01_x_vec), _mm_mul_ps(qx0_vec, edge01_y_vec)), invArea_vec);
+                    __m128 alpha_mask = _mm_cmpge_ps(alpha_vec, zero_vec);
+                    
+                    // Early exit if all alphas are negative
+                    if (_mm_movemask_ps(alpha_mask) == 0) continue;
+                    
+                    // Compute beta
+                    __m128 beta_vec = _mm_mul_ps(_mm_sub_ps(_mm_mul_ps(qy1_vec, edge12_x_vec), _mm_mul_ps(qx1_vec, edge12_y_vec)), invArea_vec);
+                    __m128 beta_mask = _mm_cmpge_ps(beta_vec, zero_vec);
+                    
+                    // Early exit if no pixels pass both alpha and beta
+                    __m128 alpha_beta_mask = _mm_and_ps(alpha_mask, beta_mask);
+                    if (_mm_movemask_ps(alpha_beta_mask) == 0) continue;
+                    
+                    // Compute gamma
+                    __m128 gamma_vec = _mm_mul_ps(_mm_sub_ps(_mm_mul_ps(qy2_vec, edge20_x_vec), _mm_mul_ps(qx2_vec, edge20_y_vec)), invArea_vec);
+                    __m128 gamma_mask = _mm_cmpge_ps(gamma_vec, zero_vec);
+                    __m128 inside_mask = _mm_and_ps(alpha_beta_mask, gamma_mask);
+                    
+                    // Extract mask and process pixels individually
+                    int mask = _mm_movemask_ps(inside_mask);
+                    
+                    // Process each pixel that passed the test
+                    float alpha_arr[4], beta_arr[4], gamma_arr[4];
+                    _mm_store_ps(alpha_arr, alpha_vec);
+                    _mm_store_ps(beta_arr, beta_vec);
+                    _mm_store_ps(gamma_arr, gamma_vec);
+                    
+                    for (int i = 0; i < 4; i++) {
+                        if (!(mask & (1 << i))) continue;
+                        
+                        float alpha = alpha_arr[i];
+                        float beta = beta_arr[i];
+                        float gamma = gamma_arr[i];
+                        int px = x + i;
+
+                        #if USE_EARLY_DEPTH_TEST_OPTIMIZATION
+                            float depth = interpolate(beta, gamma, alpha, v[0].p[2], v[1].p[2], v[2].p[2]);
+                            if (!(renderer.zbuffer(px, y) > depth && depth > 0.001f)) continue;
+                        #endif
+
+                        // Interpolate color, depth, and normals
+                        colour c = interpolate(beta, gamma, alpha, v[0].rgb, v[1].rgb, v[2].rgb);
+                        c.clampColour();
+
+                        #if !USE_EARLY_DEPTH_TEST_OPTIMIZATION
+                            float depth = interpolate(beta, gamma, alpha, v[0].p[2], v[1].p[2], v[2].p[2]);
+                        #endif
+                        
+                        vec4 normal = interpolate(beta, gamma, alpha, v[0].normal, v[1].normal, v[2].normal);
+                        #if !USE_AVOID_NORMAL_NORMALIZATION_OPTIMIZATION
+                            normal.normalise();
+                        #endif
+
+                        // Perform Z-buffer test and apply shading
+                        #if !USE_EARLY_DEPTH_TEST_OPTIMIZATION
+                            if (!(renderer.zbuffer(px, y) > depth && depth > 0.001f)) continue;
+                        #endif
+
+                        // typical shader begin
+                        #if !USE_LIGHT_NORM_OUT_OPTIMIZATION
+                            L.omega_i.normalise();
+                        #endif
+
+                        float dot = std::max(vec4::dot(L.omega_i, normal), 0.0f);
+                        colour a = (c * kd) * (L.L * dot) + (L.ambient * ka);
+                        // typical shader end
+                        unsigned char r, g, b;
+                        a.toRGB(r, g, b);
+                        renderer.canvas.draw(px, y, r, g, b);
+                        renderer.zbuffer(px, y) = depth;
+                    }
+                }
+            #endif
+            
+            // Scalar path: Process remaining pixels one at a time
+            for (; x < xMax; x++) {
                 #if USE_STORE_VEC2D_INV_AREA_OPTIMIZATION
                     float px = (float)x;
                     float py = (float)y;
 
+                    // Compute alpha first for early exit
                     float qx0 = px - zero.x;
                     float qy0 = py - zero.y;
-                    float qx1 = px - one.x;
-                    float qy1 = py - one.y;
-                    float qx2 = px - two.x;
-                    float qy2 = py - two.y;
-                    
                     float alpha = (qy0 * edge01.x - qx0 * edge01.y) * invArea;
                     if (alpha < 0.f) continue;
+                    
+                    // Only compute beta if alpha passed
+                    float qx1 = px - one.x;
+                    float qy1 = py - one.y;
                     float beta = (qy1 * edge12.x - qx1 * edge12.y) * invArea;
                     if (beta < 0.f) continue;
+                    
+                    // Only compute gamma if alpha and beta passed
+                    float qx2 = px - two.x;
+                    float qy2 = py - two.y;
                     float gamma = (qy2 * edge20.x - qx2 * edge20.y) * invArea;
                     if (gamma < 0.f) continue;
                 #else
@@ -168,7 +286,6 @@ public:
                     float alpha, beta, gamma;
                     if (!getCoordinates(vec2D((float)x, (float)y), alpha, beta, gamma)) continue;
                 #endif
-
 
                 #if USE_EARLY_DEPTH_TEST_OPTIMIZATION
                     float depth = interpolate(beta, gamma, alpha, v[0].p[2], v[1].p[2], v[2].p[2]);
@@ -228,21 +345,112 @@ public:
 
         // Iterate over the bounding box and check each pixel
         for (int y = minV.y; y < maxV.y; y++) {
-            for (int x = minV.x; x < maxV.x; x++) {
+            int x = minV.x;
+            int xMax = maxV.x;
+            
+            #if USE_SIMD_OPTIMIZATION
+                // SIMD path: Process 4 pixels at a time
+                __m128 py_vec = _mm_set1_ps((float)y);
+                __m128 zero_x_vec = _mm_set1_ps(zero.x);
+                __m128 zero_y_vec = _mm_set1_ps(zero.y);
+                __m128 one_x_vec = _mm_set1_ps(one.x);
+                __m128 one_y_vec = _mm_set1_ps(one.y);
+                __m128 two_x_vec = _mm_set1_ps(two.x);
+                __m128 two_y_vec = _mm_set1_ps(two.y);
+                __m128 edge01_x_vec = _mm_set1_ps(edge01.x);
+                __m128 edge01_y_vec = _mm_set1_ps(edge01.y);
+                __m128 edge12_x_vec = _mm_set1_ps(edge12.x);
+                __m128 edge12_y_vec = _mm_set1_ps(edge12.y);
+                __m128 edge20_x_vec = _mm_set1_ps(edge20.x);
+                __m128 edge20_y_vec = _mm_set1_ps(edge20.y);
+                __m128 invArea_vec = _mm_set1_ps(invArea);
+                __m128 zero_vec = _mm_setzero_ps();
+                
+                // Process 4 pixels at a time
+                for (; x + 3 < xMax; x += 4) {
+                    __m128 px_vec = _mm_set_ps((float)(x + 3), (float)(x + 2), (float)(x + 1), (float)x);
+                    
+                    // Compute qx0, qy0, qx1, qy1, qx2, qy2 for 4 pixels
+                    __m128 qx0_vec = _mm_sub_ps(px_vec, zero_x_vec);
+                    __m128 qy0_vec = _mm_sub_ps(py_vec, zero_y_vec);
+                    __m128 qx1_vec = _mm_sub_ps(px_vec, one_x_vec);
+                    __m128 qy1_vec = _mm_sub_ps(py_vec, one_y_vec);
+                    __m128 qx2_vec = _mm_sub_ps(px_vec, two_x_vec);
+                    __m128 qy2_vec = _mm_sub_ps(py_vec, two_y_vec);
+                    
+                    // Compute barycentric coordinates for 4 pixels - alpha first for early exit
+                    __m128 alpha_vec = _mm_mul_ps(_mm_sub_ps(_mm_mul_ps(qy0_vec, edge01_x_vec), _mm_mul_ps(qx0_vec, edge01_y_vec)), invArea_vec);
+                    __m128 alpha_mask = _mm_cmpge_ps(alpha_vec, zero_vec);
+                    
+                    // Early exit if all alphas are negative
+                    if (_mm_movemask_ps(alpha_mask) == 0) continue;
+                    
+                    // Compute beta
+                    __m128 beta_vec = _mm_mul_ps(_mm_sub_ps(_mm_mul_ps(qy1_vec, edge12_x_vec), _mm_mul_ps(qx1_vec, edge12_y_vec)), invArea_vec);
+                    __m128 beta_mask = _mm_cmpge_ps(beta_vec, zero_vec);
+                    
+                    // Early exit if no pixels pass both alpha and beta
+                    __m128 alpha_beta_mask = _mm_and_ps(alpha_mask, beta_mask);
+                    if (_mm_movemask_ps(alpha_beta_mask) == 0) continue;
+                    
+                    // Compute gamma
+                    __m128 gamma_vec = _mm_mul_ps(_mm_sub_ps(_mm_mul_ps(qy2_vec, edge20_x_vec), _mm_mul_ps(qx2_vec, edge20_y_vec)), invArea_vec);
+                    __m128 gamma_mask = _mm_cmpge_ps(gamma_vec, zero_vec);
+                    __m128 inside_mask = _mm_and_ps(alpha_beta_mask, gamma_mask);
+                    
+                    // Extract mask and process pixels individually
+                    int mask = _mm_movemask_ps(inside_mask);
+                    
+                    // Process each pixel that passed the test
+                    float alpha_arr[4], beta_arr[4], gamma_arr[4];
+                    _mm_store_ps(alpha_arr, alpha_vec);
+                    _mm_store_ps(beta_arr, beta_vec);
+                    _mm_store_ps(gamma_arr, gamma_vec);
+
+                    for (int i = 0; i < 4; i++) {
+                        if (!(mask & (1 << i))) continue;
+                        
+                        float alpha = alpha_arr[i];
+                        float beta = beta_arr[i];
+                        float gamma = gamma_arr[i];
+                        int px = x + i;
+
+                        float depth = interpolate(beta, gamma, alpha, v[0].p[2], v[1].p[2], v[2].p[2]);
+                        if (!(renderer.zbuffer(px, y) > depth && depth > 0.001f)) continue;
+
+                        // Interpolate color, depth, and normals
+                        colour c = interpolate(beta, gamma, alpha, v[0].rgb, v[1].rgb, v[2].rgb);
+                        c.clampColour();
+                        vec4 normal = interpolate(beta, gamma, alpha, v[0].normal, v[1].normal, v[2].normal);
+
+                        float dot = std::max(vec4::dot(L.omega_i, normal), 0.0f);
+                        colour a = (c * kd) * (L.L * dot) + (L.ambient * ka);
+
+                        unsigned char r, g, b;
+                        a.toRGB(r, g, b);
+                        renderer.canvas.draw(px, y, r, g, b);
+                        renderer.zbuffer(px, y) = depth;
+                    }
+                }
+            #endif
+            
+            // Scalar path: Process remaining pixels one at a time
+            for (; x < xMax; x++) {
                 float px = (float)x;
                 float py = (float)y;
 
                 float qx0 = px - zero.x;
                 float qy0 = py - zero.y;
-                float qx1 = px - one.x;
-                float qy1 = py - one.y;
-                float qx2 = px - two.x;
-                float qy2 = py - two.y;
-                
                 float alpha = (qy0 * edge01.x - qx0 * edge01.y) * invArea;
                 if (alpha < 0.f) continue;
+                
+                float qx1 = px - one.x;
+                float qy1 = py - one.y;
                 float beta = (qy1 * edge12.x - qx1 * edge12.y) * invArea;
                 if (beta < 0.f) continue;
+
+                float qx2 = px - two.x;
+                float qy2 = py - two.y;
                 float gamma = (qy2 * edge20.x - qx2 * edge20.y) * invArea;
                 if (gamma < 0.f) continue;
 

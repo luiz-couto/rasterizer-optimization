@@ -22,7 +22,7 @@
 #include "optimizations.h"
 #include "threadpool.h"
 
-ThreadPool threadPool = ThreadPool(6);
+ThreadPool threadPool = ThreadPool(5);
 
 // Main rendering function that processes a mesh, transforms its vertices, applies lighting, and draws triangles on the canvas.
 // Input Variables:
@@ -376,7 +376,7 @@ void scene2() {
         if (renderer.canvas.keyPressed(VK_ESCAPE)) break;
 
         for (auto& m : scene)
-            render(renderer, m, camera, L);
+            renderUsingThreads(renderer, m, camera, L);
         renderer.present();
     }
 
@@ -410,8 +410,8 @@ void testTimer() {
 int main() {
     // Uncomment the desired scene function to run
 
-    scene1();
-    //scene2();
+    //scene1();
+    scene2();
     //sceneTest(); 
     
     //testTimer();
