@@ -87,6 +87,7 @@ struct Triangle {
     triangle tri;
 };
 
+#if USE_MULTITHREAD_OPTIMIZATION && USE_STORE_VEC2D_INV_AREA_OPTIMIZATION
 void renderUsingThreads(Renderer& renderer, Mesh* mesh, matrix& camera, Light& L) {
     matrix p = renderer.perspective * camera * mesh->world;
     std::vector<Triangle> triangles;
@@ -161,6 +162,7 @@ void renderUsingThreads(Renderer& renderer, Mesh* mesh, matrix& camera, Light& L
         std::this_thread::yield();
     }
 }
+#endif
 
 // Test scene function to demonstrate rendering with user-controlled transformations
 // No input variables
@@ -291,7 +293,11 @@ void scene1() {
         }
 
         for (auto& m : scene) {
-            render(renderer, m, camera, L);
+            #if USE_MULTITHREAD_OPTIMIZATION && USE_STORE_VEC2D_INV_AREA_OPTIMIZATION
+                renderUsingThreads(renderer, m, camera, L);
+            #else
+                render(renderer, m, camera, L);
+            #endif
         }
 
         renderer.present();
@@ -375,8 +381,13 @@ void scene2() {
 
         if (renderer.canvas.keyPressed(VK_ESCAPE)) break;
 
-        for (auto& m : scene)
-            renderUsingThreads(renderer, m, camera, L);
+        for (auto& m : scene) {
+            #if USE_MULTITHREAD_OPTIMIZATION && USE_STORE_VEC2D_INV_AREA_OPTIMIZATION
+                renderUsingThreads(renderer, m, camera, L);
+            #else
+                render(renderer, m, camera, L);
+            #endif
+        }
         renderer.present();
     }
 

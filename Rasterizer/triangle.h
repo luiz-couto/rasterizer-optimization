@@ -353,6 +353,7 @@ public:
     // - ka, kd: Ambient and diffuse lighting coefficients
     // - minV, maxV: Pre-calculated bounds of the triangle
     // - startY, endY: Y-coordinate range this thread is responsible for
+    #if USE_MULTITHREAD_OPTIMIZATION && USE_STORE_VEC2D_INV_AREA_OPTIMIZATION
     void draw(Renderer& renderer, Light& L, float ka, float kd, vec2D<int> minV, vec2D<int> maxV, int startY, int endY) {
         // Skip very small triangles
         if (area < 1.f) return;
@@ -367,7 +368,7 @@ public:
             int x = minV.x;
             int xMax = maxV.x;
             
-            #if USE_SIMD_OPTIMIZATION && USE_STORE_VEC2D_INV_AREA_OPTIMIZATION
+            #if USE_SIMD_OPTIMIZATION 
                 __m128 pyVec = _mm_set1_ps((float)y);
                 
                 // Process 4 pixels at a time
@@ -477,6 +478,7 @@ public:
             }
         }
     }
+    #endif
 
     // Compute the 2D bounds of the triangle
     // Output Variables:
