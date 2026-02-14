@@ -87,7 +87,7 @@ struct Triangle {
     triangle tri;
 };
 
-#if USE_MULTITHREAD_OPTIMIZATION && USE_STORE_VEC2D_INV_AREA_OPTIMIZATION
+#if USE_MULTITHREAD_OPTIMIZATION && USE_STORE_VEC2D_INV_AREA_OPTIMIZATION && USE_VERTICES_SOA_OPTIMIZATION
 void renderUsingThreads(Renderer& renderer, Mesh* mesh, matrix& camera, Light& L) {
     matrix p = renderer.perspective * camera * mesh->world;
     std::vector<Triangle> triangles;
@@ -293,7 +293,7 @@ void scene1() {
         }
 
         for (auto& m : scene) {
-            #if USE_MULTITHREAD_OPTIMIZATION && USE_STORE_VEC2D_INV_AREA_OPTIMIZATION
+            #if USE_MULTITHREAD_OPTIMIZATION && USE_STORE_VEC2D_INV_AREA_OPTIMIZATION && USE_VERTICES_SOA_OPTIMIZATION
                 renderUsingThreads(renderer, m, camera, L);
             #else
                 render(renderer, m, camera, L);
@@ -382,7 +382,7 @@ void scene2() {
         if (renderer.canvas.keyPressed(VK_ESCAPE)) break;
 
         for (auto& m : scene) {
-            #if USE_MULTITHREAD_OPTIMIZATION && USE_STORE_VEC2D_INV_AREA_OPTIMIZATION
+            #if USE_MULTITHREAD_OPTIMIZATION && USE_STORE_VEC2D_INV_AREA_OPTIMIZATION && USE_VERTICES_SOA_OPTIMIZATION
                 renderUsingThreads(renderer, m, camera, L);
             #else
                 render(renderer, m, camera, L);
