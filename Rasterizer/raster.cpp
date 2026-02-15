@@ -426,7 +426,10 @@ void scene3() {
     std::vector<RandomObject> randomObjects;
     RandomNumberGenerator& rng = RandomNumberGenerator::getInstance();
 
-    for (unsigned int i = 0; i < 1; i++) {
+    float objectOffset = -6.f;
+    float objectStep = 0.15f;
+
+    for (unsigned int i = 0; i < 1000; i++) {
         Mesh* m = new Mesh();
         uint32_t chooseMesh = rng.getRandomInt(0, 1);
 
@@ -438,7 +441,7 @@ void scene3() {
 
         scene.push_back(m);
 
-        vec4 initialPosition(rng.getRandomFloat(-7.f, -6.f), rng.getRandomFloat(-5.f, 5.f), rng.getRandomFloat(-5.f, -15.f));
+        vec4 initialPosition(objectOffset, rng.getRandomFloat(-5.f, 5.f), rng.getRandomFloat(-5.f, -15.f));
         vec4 randomRotation(rng.getRandomFloat(-.1f, .1f), rng.getRandomFloat(-.1f, .1f), rng.getRandomFloat(-.1f, .1f));
         float randomVelocity = rng.getRandomFloat(0.1f, 0.2f);
         colour randomColour(rng.getRandomFloat(0.f, 1.f), rng.getRandomFloat(0.f, 1.f), rng.getRandomFloat(0.f, 1.f));
@@ -450,10 +453,34 @@ void scene3() {
         randomObjects.push_back({ m, initialPosition, randomRotation, randomVelocity, randomColour });
     }
 
+    #if USE_TC_TIMER_OPTIMISATION
+        TimerCaptures tc;
+    #else
+        auto start = std::chrono::high_resolution_clock::now();
+        std::chrono::time_point<std::chrono::high_resolution_clock> end;
+    #endif
+
+    int cycle = 0;
+
     bool running = true;
     while (running) {
         renderer.canvas.checkInput();
         renderer.clear();
+
+        // Update cycle offset
+        objectOffset += objectStep;
+        if (objectOffset > 6.0f || objectOffset < -6.0f) {
+            objectStep *= -1.f;
+            if (++cycle % 2 == 0) {
+                #if USE_TC_TIMER_OPTIMISATION
+                    tc.capture();
+                #else
+                    end = std::chrono::high_resolution_clock::now();
+                    std::cout << cycle / 2 << " :" << std::chrono::duration<double, std::milli>(end - start).count() << "ms\n";
+                    start = std::chrono::high_resolution_clock::now();
+                #endif
+            }
+        }
 
         for (int i=0; i<randomObjects.size(); i++) {
             // rotate and move the x position based on the velocity
@@ -484,6 +511,13 @@ void scene3() {
 
         renderer.present();
     }
+
+    for (auto& m : scene)
+        delete m;
+
+    #if USE_TC_TIMER_OPTIMISATION
+        tc.printAverageElapsed();
+    #endif
 }
 
 void testTimer() {
@@ -503,8 +537,8 @@ int main() {
     // Uncomment the desired scene function to run
 
     //scene1();
-    //scene3();
-    scene2();
+    //scene2();
+    scene3();
     //sceneTest(); 
     
     //testTimer();
