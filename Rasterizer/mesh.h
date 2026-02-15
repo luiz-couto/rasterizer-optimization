@@ -95,6 +95,19 @@ public:
         triangles.emplace_back(v1, v2, v3);
     }
 
+    // Update all vertex colors to match the mesh's current color
+    void updateVertexColors() {
+        #if USE_VERTICES_SOA_OPTIMIZATION
+            for (size_t i = 0; i < vSOA.colors.size(); ++i) {
+                vSOA.colors[i] = col;
+            }
+        #else
+            for (size_t i = 0; i < vertices.size(); ++i) {
+                vertices[i].rgb = col;
+            }
+        #endif
+    }
+
     // Display the vertices and triangles of the mesh
     void display() const {
         std::cout << "Vertices and Normals:\n";

@@ -427,7 +427,7 @@ void scene3() {
         if (chooseMesh == 0) {
             *m = Mesh::makeCube(1.f);
         } else {
-            *m = Mesh::makeSphere(1.0f, 10, 20);
+            *m = Mesh::makeSphere(0.5f, 10, 20);
         }
 
         scene.push_back(m);
@@ -438,6 +438,7 @@ void scene3() {
         colour randomColour(rng.getRandomFloat(0.f, 1.f), rng.getRandomFloat(0.f, 1.f), rng.getRandomFloat(0.f, 1.f));
 
         m->col = randomColour;
+        m->updateVertexColors();
         m->world = matrix::makeTranslation(initialPosition[0], initialPosition[1], initialPosition[2]);
 
         randomObjects.push_back({ m, initialPosition, randomRotation, randomVelocity, randomColour });
