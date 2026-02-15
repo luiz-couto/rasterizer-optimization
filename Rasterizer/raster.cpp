@@ -181,53 +181,98 @@ void renderUsingThreads(Renderer& renderer, Mesh* mesh, matrix& camera, Light& L
 // Batched rendering: collect triangles from ALL meshes, then render in one multi-threaded pass
 // This eliminates per-mesh synchronization overhead for scenes with many small objects
 void renderSceneUsingThreads(Renderer& renderer, std::vector<Mesh*>& scene, matrix& camera, Light& L) {
-    std::vector<TriangleRef> allTriangles;
-    allTriangles.reserve(200000); // Pre-allocate to avoid reallocation overhead
+    size_t numThreads = threadPool.getNumThreads();
+    size_t numMeshes = scene.size();
 
-    // Phase 1: Collect all triangle data from all meshes (single-threaded, but fast)
-    for (auto& mesh : scene) {
-        matrix p = renderer.perspective * camera * mesh->world;
+    if (numMeshes == 0) return;
 
-        for (triIndices& ind : mesh->triangles) {
-            Vertex t[3];
-            for (unsigned int i = 0; i < 3; i++) {
-                t[i].p = p * mesh->vSOA.positions[ind.v[i]];
-                t[i].p.divideW();
-                t[i].normal = mesh->world * mesh->vSOA.normals[ind.v[i]];
-                t[i].normal.normalise();
+    // Phase 1: Collect all triangle data from all meshes (PARALLELIZED!)
+    // Each thread processes a subset of meshes into its own local vector
+    std::vector<std::vector<TriangleRef>> perThreadTriangles(numThreads);
 
-                // Map normalized device coordinates to screen space
-                t[i].p[0] = (t[i].p[0] + 1.f) * 0.5f * static_cast<float>(renderer.canvas.getWidth());
-                t[i].p[1] = (t[i].p[1] + 1.f) * 0.5f * static_cast<float>(renderer.canvas.getHeight());
-                t[i].p[1] = renderer.canvas.getHeight() - t[i].p[1]; // Invert y-axis
+    // Pre-allocate space for each thread's vector
+    for (auto& vec : perThreadTriangles) {
+        vec.reserve(200000 / numThreads + 1000); // Estimate per thread + buffer
+    }
 
-                t[i].rgb = mesh->vSOA.colors[ind.v[i]];
+    std::atomic<size_t> completedCollectionJobs(0);
+
+    // Divide meshes among threads
+    for (size_t i = 0; i < numThreads; ++i) {
+        size_t startMesh = (i * numMeshes) / numThreads;
+        size_t endMesh = ((i + 1) * numMeshes) / numThreads;
+
+        threadPool.enqueue([&, i, startMesh, endMesh]() {
+            auto& localTriangles = perThreadTriangles[i];
+
+            // Process this thread's subset of meshes
+            for (size_t meshIdx = startMesh; meshIdx < endMesh; ++meshIdx) {
+                Mesh* mesh = scene[meshIdx];
+                matrix p = renderer.perspective * camera * mesh->world;
+
+                for (triIndices& ind : mesh->triangles) {
+                    Vertex t[3];
+                    for (unsigned int j = 0; j < 3; j++) {
+                        t[j].p = p * mesh->vSOA.positions[ind.v[j]];
+                        t[j].p.divideW();
+                        t[j].normal = mesh->world * mesh->vSOA.normals[ind.v[j]];
+                        t[j].normal.normalise();
+
+                        // Map normalized device coordinates to screen space
+                        t[j].p[0] = (t[j].p[0] + 1.f) * 0.5f * static_cast<float>(renderer.canvas.getWidth());
+                        t[j].p[1] = (t[j].p[1] + 1.f) * 0.5f * static_cast<float>(renderer.canvas.getHeight());
+                        t[j].p[1] = renderer.canvas.getHeight() - t[j].p[1]; // Invert y-axis
+
+                        t[j].rgb = mesh->vSOA.colors[ind.v[j]];
+                    }
+
+                    if (fabs(t[0].p[2]) > 1.0f || fabs(t[1].p[2]) > 1.0f || fabs(t[2].p[2]) > 1.0f) continue;
+
+                    // Compute bounds without creating full triangle object
+                    vec2D<float> minVf(
+                        std::min({t[0].p[0], t[1].p[0], t[2].p[0]}),
+                        std::min({t[0].p[1], t[1].p[1], t[2].p[1]})
+                    );
+                    vec2D<float> maxVf(
+                        std::max({t[0].p[0], t[1].p[0], t[2].p[0]}),
+                        std::max({t[0].p[1], t[1].p[1], t[2].p[1]})
+                    );
+
+                    // Clamp to screen bounds
+                    minVf.x = std::max(minVf.x, 0.0f);
+                    minVf.y = std::max(minVf.y, 0.0f);
+                    maxVf.x = std::min(maxVf.x, static_cast<float>(renderer.canvas.getWidth()));
+                    maxVf.y = std::min(maxVf.y, static_cast<float>(renderer.canvas.getHeight()));
+
+                    vec2D<int> minV((int)minVf.x, (int)minVf.y);
+                    vec2D<int> maxV((int)ceil(maxVf.x), (int)ceil(maxVf.y));
+
+                    // Store in thread-local vector (no contention!)
+                    localTriangles.push_back({ minV, maxV, {t[0], t[1], t[2]}, mesh->ka, mesh->kd });
+                }
             }
 
-            if (fabs(t[0].p[2]) > 1.0f || fabs(t[1].p[2]) > 1.0f || fabs(t[2].p[2]) > 1.0f) continue;
+            completedCollectionJobs++;
+        });
+    }
 
-            // Compute bounds without creating full triangle object
-            vec2D<float> minVf(
-                std::min({t[0].p[0], t[1].p[0], t[2].p[0]}),
-                std::min({t[0].p[1], t[1].p[1], t[2].p[1]})
-            );
-            vec2D<float> maxVf(
-                std::max({t[0].p[0], t[1].p[0], t[2].p[0]}),
-                std::max({t[0].p[1], t[1].p[1], t[2].p[1]})
-            );
+    // Wait for all collection jobs to complete
+    while (completedCollectionJobs < numThreads) {
+        std::this_thread::yield();
+    }
 
-            // Clamp to screen bounds
-            minVf.x = std::max(minVf.x, 0.0f);
-            minVf.y = std::max(minVf.y, 0.0f);
-            maxVf.x = std::min(maxVf.x, static_cast<float>(renderer.canvas.getWidth()));
-            maxVf.y = std::min(maxVf.y, static_cast<float>(renderer.canvas.getHeight()));
+    // Merge all per-thread vectors into one
+    std::vector<TriangleRef> allTriangles;
+    size_t totalTriangles = 0;
+    for (const auto& vec : perThreadTriangles) {
+        totalTriangles += vec.size();
+    }
+    allTriangles.reserve(totalTriangles);
 
-            vec2D<int> minV((int)minVf.x, (int)minVf.y);
-            vec2D<int> maxV((int)ceil(maxVf.x), (int)ceil(maxVf.y));
-
-            // Store lightweight reference (just vertices and bounds)
-            allTriangles.push_back({ minV, maxV, {t[0], t[1], t[2]}, mesh->ka, mesh->kd });
-        }
+    for (auto& vec : perThreadTriangles) {
+        allTriangles.insert(allTriangles.end(),
+                           std::make_move_iterator(vec.begin()),
+                           std::make_move_iterator(vec.end()));
     }
 
     if (allTriangles.empty()) return;
