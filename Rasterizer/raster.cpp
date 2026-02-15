@@ -22,7 +22,7 @@
 #include "optimizations.h"
 #include "threadpool.h"
 
-ThreadPool threadPool = ThreadPool(5);
+ThreadPool threadPool = ThreadPool(6);
 
 // Main rendering function that processes a mesh, transforms its vertices, applies lighting, and draws triangles on the canvas.
 // Input Variables:
@@ -90,37 +90,67 @@ struct Triangle {
 #if USE_MULTITHREAD_OPTIMIZATION && USE_STORE_VEC2D_INV_AREA_OPTIMIZATION && USE_VERTICES_SOA_OPTIMIZATION
 void renderUsingThreads(Renderer& renderer, Mesh* mesh, matrix& camera, Light& L) {
     matrix p = renderer.perspective * camera * mesh->world;
-    std::vector<Triangle> triangles;
 
-    for (triIndices& ind : mesh->triangles) {
-        Vertex t[3];
-        for (unsigned int i = 0; i < 3; i++) {
-            t[i].p = p * mesh->vSOA.positions[ind.v[i]];
-            t[i].p.divideW();
-            t[i].normal = mesh->world * mesh->vSOA.normals[ind.v[i]];
-            t[i].normal.normalise();
+    size_t numTriangles = mesh->triangles.size();
+    if (numTriangles == 0) return;
 
-            // Map normalized device coordinates to screen space
-            t[i].p[0] = (t[i].p[0] + 1.f) * 0.5f * static_cast<float>(renderer.canvas.getWidth());
-            t[i].p[1] = (t[i].p[1] + 1.f) * 0.5f * static_cast<float>(renderer.canvas.getHeight());
-            t[i].p[1] = renderer.canvas.getHeight() - t[i].p[1]; // Invert y-axis
+    std::vector<Triangle> triangles(numTriangles);
+    std::vector<bool> validTriangles(numTriangles, false);
 
-            t[i].rgb = mesh->vSOA.colors[ind.v[i]];
-        }
+    size_t numThreads = threadPool.getNumThreads();
+    std::atomic<size_t> completedTransformJobs(0);
 
-        if (fabs(t[0].p[2]) > 1.0f || fabs(t[1].p[2]) > 1.0f || fabs(t[2].p[2]) > 1.0f) continue;
-        
-        vec2D<float> minVf, maxVf;
-        triangle tri(t[0], t[1], t[2]);
-        
-        tri.getBoundsWindow(renderer.canvas, minVf, maxVf);
+    for (size_t i=0; i<numThreads; ++i) {
+        threadPool.enqueue([&, threadIndex = i]() {
+            for (size_t j = threadIndex; j < numTriangles; j += numThreads) {
+                triIndices& ind = mesh->triangles[j];
+                Vertex t[3];
+                for (unsigned int k = 0; k < 3; k++) {
+                    t[k].p = p * mesh->vSOA.positions[ind.v[k]];
+                    t[k].p.divideW();
+                    t[k].normal = mesh->world * mesh->vSOA.normals[ind.v[k]];
+                    t[k].normal.normalise();
 
-        vec2D<int> minV((int)minVf.x, (int)minVf.y);
-        vec2D<int> maxV((int)ceil(maxVf.x), (int)ceil(maxVf.y));
+                    // Map normalized device coordinates to screen space
+                    t[k].p[0] = (t[k].p[0] + 1.f) * 0.5f * static_cast<float>(renderer.canvas.getWidth());
+                    t[k].p[1] = (t[k].p[1] + 1.f) * 0.5f * static_cast<float>(renderer.canvas.getHeight());
+                    t[k].p[1] = renderer.canvas.getHeight() - t[k].p[1]; // Invert y-axis
 
-        triangles.push_back({ minV, maxV, tri });
+                    t[k].rgb = mesh->vSOA.colors[ind.v[k]];
+                }
+
+                if (fabs(t[0].p[2]) > 1.0f || fabs(t[1].p[2]) > 1.0f || fabs(t[2].p[2]) > 1.0f) continue;
+
+                vec2D<float> minVf, maxVf;
+                triangle tri(t[0], t[1], t[2]);
+                tri.getBoundsWindow(renderer.canvas, minVf, maxVf);
+
+                vec2D<int> minV((int)minVf.x, (int)minVf.y);
+                vec2D<int> maxV((int)ceil(maxVf.x), (int)ceil(maxVf.y));
+
+                triangles[j] = { minV, maxV, tri };
+                validTriangles[j] = true;
+            }
+
+            completedTransformJobs++;
+        });
     }
 
+    while (completedTransformJobs < numThreads) {
+        std::this_thread::yield();
+    }
+
+    size_t writeIdx = 0;
+    for (size_t i = 0; i < numTriangles; ++i) {
+        if (validTriangles[i]) {
+            if (writeIdx != i) {
+                triangles[writeIdx] = triangles[i];
+            }
+            writeIdx++;
+        }
+    }
+
+    triangles.resize(writeIdx);
     if (triangles.empty()) return;
 
     L.omega_i.normalise();
@@ -137,7 +167,6 @@ void renderUsingThreads(Renderer& renderer, Mesh* mesh, matrix& camera, Light& L
     }
 
     // Divide work into horizontal strips, one per thread
-    size_t numThreads = threadPool.getNumThreads();
     int totalHeight = globalMax.y - globalMin.y;
     
     if (totalHeight <= 0) return;
@@ -426,7 +455,7 @@ void scene3() {
     std::vector<RandomObject> randomObjects;
     RandomNumberGenerator& rng = RandomNumberGenerator::getInstance();
 
-    for (unsigned int i = 0; i < 1; i++) {
+    for (unsigned int i = 0; i < 10000; i++) {
         Mesh* m = new Mesh();
         uint32_t chooseMesh = rng.getRandomInt(0, 1);
 
@@ -503,8 +532,8 @@ int main() {
     // Uncomment the desired scene function to run
 
     //scene1();
-    //scene3();
-    scene2();
+    //scene2();
+    scene3();
     //sceneTest(); 
     
     //testTimer();

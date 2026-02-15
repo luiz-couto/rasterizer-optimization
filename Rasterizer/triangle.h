@@ -68,6 +68,13 @@ class triangle {
     #endif
 
 public:
+    // Default constructor
+    triangle() : area(0.0f) {
+        #if USE_STORE_VEC2D_INV_AREA_OPTIMIZATION
+            invArea = 0.0f;
+        #endif
+    }
+
     // Constructor initializes the triangle with three vertices
     // Input Variables:
     // - v1, v2, v3: Vertices defining the triangle
