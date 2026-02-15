@@ -401,8 +401,84 @@ void scene2() {
 
 // The SoA optimization will help in vertex-heavy scenario, but the current workload 
 // is rasterization-bound, not transform-bound.
+
+struct RandomObject {
+    Mesh *object;
+    vec4 initialPosition;
+    vec4 randomRotation;
+    float randomVelocity;
+    colour randomColour;
+};
+
+// random objects with random colors going from left to the right of the screen with random velocities and random rotations
 void scene3() {
-    // Placeholder for future scene implementation
+    Renderer renderer;
+    matrix camera = matrix::makeIdentity();
+    Light L{ vec4(0.f, 1.f, 1.f, 0.f), colour(1.0f, 1.0f, 1.0f), colour(0.2f, 0.2f, 0.2f) };
+
+    std::vector<Mesh*> scene;
+    std::vector<RandomObject> randomObjects;
+    RandomNumberGenerator& rng = RandomNumberGenerator::getInstance();
+
+    for (unsigned int i = 0; i < 100; i++) {
+        Mesh* m = new Mesh();
+        uint32_t chooseMesh = rng.getRandomInt(0, 1);
+
+        if (chooseMesh == 0) {
+            *m = Mesh::makeCube(1.f);
+        } else {
+            *m = Mesh::makeSphere(1.0f, 10, 20);
+        }
+
+        scene.push_back(m);
+
+        vec4 initialPosition(rng.getRandomFloat(-7.f, -6.f), rng.getRandomFloat(-5.f, 5.f), rng.getRandomFloat(-5.f, -15.f));
+        vec4 randomRotation(rng.getRandomFloat(-.1f, .1f), rng.getRandomFloat(-.1f, .1f), rng.getRandomFloat(-.1f, .1f));
+        float randomVelocity = rng.getRandomFloat(0.1f, 0.2f);
+        colour randomColour(rng.getRandomFloat(0.f, 1.f), rng.getRandomFloat(0.f, 1.f), rng.getRandomFloat(0.f, 1.f));
+
+        m->col = randomColour;
+        m->world = matrix::makeTranslation(initialPosition[0], initialPosition[1], initialPosition[2]);
+
+        randomObjects.push_back({ m, initialPosition, randomRotation, randomVelocity, randomColour });
+    }
+
+    bool running = true;
+    while (running) {
+        renderer.canvas.checkInput();
+        renderer.clear();
+
+        for (int i=0; i<randomObjects.size(); i++) {
+            // rotate and move the x position based on the velocity
+            randomObjects[i].initialPosition[0] += randomObjects[i].randomVelocity;
+            
+            // bounce off the edges
+            if (randomObjects[i].initialPosition[0] > 10.f || randomObjects[i].initialPosition[0] < -10.f) {
+                randomObjects[i].randomVelocity *= -1.f;
+            }
+            
+            scene[i]->world = 
+                matrix::makeTranslation(
+                    randomObjects[i].initialPosition[0],
+                    randomObjects[i].initialPosition[1],
+                    randomObjects[i].initialPosition[2]
+                )
+                *
+                matrix::makeRotateXYZ(
+                    randomObjects[i].randomRotation[0],
+                    randomObjects[i].randomRotation[1],
+                    randomObjects[i].randomRotation[2]
+                );
+        }
+
+        if (renderer.canvas.keyPressed(VK_ESCAPE)) break;
+
+        for (auto& m : scene) {
+            render(renderer, m, camera, L);
+        }
+
+        renderer.present();
+    }
 }
 
 void testTimer() {
@@ -421,7 +497,7 @@ void testTimer() {
 int main() {
     // Uncomment the desired scene function to run
 
-    scene1();
+    scene3();
     //scene2();
     //sceneTest(); 
     
