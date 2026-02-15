@@ -110,14 +110,20 @@ void renderUsingThreads(Renderer& renderer, Mesh* mesh, matrix& camera, Light& L
 
         if (fabs(t[0].p[2]) > 1.0f || fabs(t[1].p[2]) > 1.0f || fabs(t[2].p[2]) > 1.0f) continue;
         
-        vec2D<int> minV, maxV;
+        vec2D<float> minVf, maxVf;
         triangle tri(t[0], t[1], t[2]);
         
-        tri.getBoundsWindow(renderer.canvas, minV, maxV);
+        tri.getBoundsWindow(renderer.canvas, minVf, maxVf);
+
+        vec2D<int> minV((int)minVf.x, (int)minVf.y);
+        vec2D<int> maxV((int)ceil(maxVf.x), (int)ceil(maxVf.y));
+
         triangles.push_back({ minV, maxV, tri });
     }
 
     if (triangles.empty()) return;
+
+    L.omega_i.normalise();
 
     // Find global min and max boundaries across all triangles
     vec2D<int> globalMin = triangles[0].minV;
@@ -361,7 +367,7 @@ void scene2() {
 
         // Rotate each cube in the grid
         for (unsigned int i = 0; i < rotations.size(); i++)
-            scene[i]->world = scene[i]->world * matrix::makeRotateXYZ(rotations[i].x, rotations[i].y, rotations[i].z);
+           scene[i]->world = scene[i]->world * matrix::makeRotateXYZ(rotations[i].x, rotations[i].y, rotations[i].z);
 
         // Move the sphere back and forth
         sphereOffset += sphereStep;
@@ -420,7 +426,7 @@ void scene3() {
     std::vector<RandomObject> randomObjects;
     RandomNumberGenerator& rng = RandomNumberGenerator::getInstance();
 
-    for (unsigned int i = 0; i < 1000; i++) {
+    for (unsigned int i = 0; i < 1; i++) {
         Mesh* m = new Mesh();
         uint32_t chooseMesh = rng.getRandomInt(0, 1);
 
@@ -496,8 +502,9 @@ void testTimer() {
 int main() {
     // Uncomment the desired scene function to run
 
-    scene3();
-    //scene2();
+    //scene1();
+    //scene3();
+    scene2();
     //sceneTest(); 
     
     //testTimer();

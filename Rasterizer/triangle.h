@@ -361,8 +361,6 @@ public:
         minV.y = std::max(minV.y, startY);
         maxV.y = std::min(maxV.y, endY);
 
-        L.omega_i.normalise();
-
         // Iterate over the bounding box and check each pixel
         for (int y = minV.y; y < maxV.y; y++) {
             int x = minV.x;
@@ -421,6 +419,8 @@ public:
                         int px = x + i;
 
                         float depth = interpolate(beta, gamma, alpha, v[0].p[2], v[1].p[2], v[2].p[2]);
+                        
+                        // Thread-safe depth test and update
                         if (!(renderer.zbuffer(px, y) > depth && depth > 0.001f)) continue;
 
                         // Interpolate color, depth, and normals
@@ -460,8 +460,10 @@ public:
                 if (gamma < 0.f) continue;
 
                 float depth = interpolate(beta, gamma, alpha, v[0].p[2], v[1].p[2], v[2].p[2]);
-                if (!(renderer.zbuffer(x, y) > depth && depth > 0.001f)) continue;
                 
+                // Thread-safe depth test and update
+                if (!(renderer.zbuffer(x, y) > depth && depth > 0.001f)) continue;
+
 
                 // Interpolate color, depth, and normals
                 colour c = interpolate(beta, gamma, alpha, v[0].rgb, v[1].rgb, v[2].rgb);
