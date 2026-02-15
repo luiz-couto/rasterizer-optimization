@@ -22,7 +22,7 @@
 #include "optimizations.h"
 #include "threadpool.h"
 
-ThreadPool threadPool = ThreadPool(5);
+ThreadPool threadPool = ThreadPool(); // Use all available hardware threads
 
 // Main rendering function that processes a mesh, transforms its vertices, applies lighting, and draws triangles on the canvas.
 // Input Variables:
@@ -85,6 +85,7 @@ struct Triangle {
     vec2D<int> minV;
     vec2D<int> maxV;
     triangle tri;
+    float ka, kd;  // Material properties per triangle
 };
 
 #if USE_MULTITHREAD_OPTIMIZATION && USE_STORE_VEC2D_INV_AREA_OPTIMIZATION && USE_VERTICES_SOA_OPTIMIZATION
@@ -118,7 +119,7 @@ void renderUsingThreads(Renderer& renderer, Mesh* mesh, matrix& camera, Light& L
         vec2D<int> minV((int)minVf.x, (int)minVf.y);
         vec2D<int> maxV((int)ceil(maxVf.x), (int)ceil(maxVf.y));
 
-        triangles.push_back({ minV, maxV, tri });
+        triangles.push_back({ minV, maxV, tri, mesh->ka, mesh->kd });
     }
 
     if (triangles.empty()) return;
@@ -150,14 +151,94 @@ void renderUsingThreads(Renderer& renderer, Mesh* mesh, matrix& camera, Light& L
         int startY = globalMin.y + (i * totalHeight) / numThreads;
         int endY = (i == numThreads - 1) ? globalMax.y : (globalMin.y + ((i + 1) * totalHeight) / numThreads);
         
-        threadPool.enqueue([&renderer, &triangles, &L, &completedJobs, ka = mesh->ka, kd = mesh->kd, startY, endY]() {
+        threadPool.enqueue([&renderer, &triangles, &L, &completedJobs, startY, endY]() {
             // Each thread processes all triangles but only draws pixels in its Y range
             for (auto& t : triangles) {
                 // Skip triangles that don't overlap with this thread's region
                 if (t.maxV.y < startY || t.minV.y >= endY) continue;
-                
+
                 // Draw the triangle (will only affect pixels in this thread's region)
-                t.tri.draw(renderer, L, ka, kd, t.minV, t.maxV, startY, endY);
+                t.tri.draw(renderer, L, t.ka, t.kd, t.minV, t.maxV, startY, endY);
+            }
+            completedJobs++;
+        });
+    }
+
+    // Wait for all threads to complete
+    while (completedJobs < numThreads) {
+        std::this_thread::yield();
+    }
+}
+
+// Batched rendering: collect triangles from ALL meshes, then render in one multi-threaded pass
+// This eliminates per-mesh synchronization overhead for scenes with many small objects
+void renderSceneUsingThreads(Renderer& renderer, std::vector<Mesh*>& scene, matrix& camera, Light& L) {
+    std::vector<Triangle> allTriangles;
+
+    // Phase 1: Collect all triangles from all meshes (single-threaded, but fast)
+    for (auto& mesh : scene) {
+        matrix p = renderer.perspective * camera * mesh->world;
+
+        for (triIndices& ind : mesh->triangles) {
+            Vertex t[3];
+            for (unsigned int i = 0; i < 3; i++) {
+                t[i].p = p * mesh->vSOA.positions[ind.v[i]];
+                t[i].p.divideW();
+                t[i].normal = mesh->world * mesh->vSOA.normals[ind.v[i]];
+                t[i].normal.normalise();
+
+                // Map normalized device coordinates to screen space
+                t[i].p[0] = (t[i].p[0] + 1.f) * 0.5f * static_cast<float>(renderer.canvas.getWidth());
+                t[i].p[1] = (t[i].p[1] + 1.f) * 0.5f * static_cast<float>(renderer.canvas.getHeight());
+                t[i].p[1] = renderer.canvas.getHeight() - t[i].p[1]; // Invert y-axis
+
+                t[i].rgb = mesh->vSOA.colors[ind.v[i]];
+            }
+
+            if (fabs(t[0].p[2]) > 1.0f || fabs(t[1].p[2]) > 1.0f || fabs(t[2].p[2]) > 1.0f) continue;
+
+            vec2D<float> minVf, maxVf;
+            triangle tri(t[0], t[1], t[2]);
+
+            tri.getBoundsWindow(renderer.canvas, minVf, maxVf);
+
+            vec2D<int> minV((int)minVf.x, (int)minVf.y);
+            vec2D<int> maxV((int)ceil(maxVf.x), (int)ceil(maxVf.y));
+
+            allTriangles.push_back({ minV, maxV, tri, mesh->ka, mesh->kd });
+        }
+    }
+
+    if (allTriangles.empty()) return;
+
+    L.omega_i.normalise();
+
+    // Find global screen bounds - just use full canvas for simplicity
+    vec2D<int> globalMin(0, 0);
+    vec2D<int> globalMax(renderer.canvas.getWidth(), renderer.canvas.getHeight());
+
+    // Phase 2: Render all triangles with threading (ONE synchronization point)
+    size_t numThreads = threadPool.getNumThreads();
+    int totalHeight = globalMax.y - globalMin.y;
+
+    if (totalHeight <= 0) return;
+
+    // Synchronization: count completed jobs
+    std::atomic<size_t> completedJobs(0);
+
+    // Enqueue jobs for each thread
+    for (size_t i = 0; i < numThreads; ++i) {
+        int startY = globalMin.y + (i * totalHeight) / numThreads;
+        int endY = (i == numThreads - 1) ? globalMax.y : (globalMin.y + ((i + 1) * totalHeight) / numThreads);
+
+        threadPool.enqueue([&renderer, &allTriangles, &L, &completedJobs, startY, endY]() {
+            // Each thread processes all triangles but only draws pixels in its Y range
+            for (auto& t : allTriangles) {
+                // Skip triangles that don't overlap with this thread's region
+                if (t.maxV.y < startY || t.minV.y >= endY) continue;
+
+                // Draw the triangle (will only affect pixels in this thread's region)
+                t.tri.draw(renderer, L, t.ka, t.kd, t.minV, t.maxV, startY, endY);
             }
             completedJobs++;
         });
@@ -298,20 +379,20 @@ void scene1() {
             }
         }
 
-        for (auto& m : scene) {
-            #if USE_MULTITHREAD_OPTIMIZATION && USE_STORE_VEC2D_INV_AREA_OPTIMIZATION && USE_VERTICES_SOA_OPTIMIZATION
-                renderUsingThreads(renderer, m, camera, L);
-            #else
+        #if USE_MULTITHREAD_OPTIMIZATION && USE_STORE_VEC2D_INV_AREA_OPTIMIZATION && USE_VERTICES_SOA_OPTIMIZATION
+            renderSceneUsingThreads(renderer, scene, camera, L);
+        #else
+            for (auto& m : scene) {
                 render(renderer, m, camera, L);
-            #endif
-        }
+            }
+        #endif
 
         renderer.present();
     }
 
     for (auto& m : scene)
         delete m;
-    
+
     #if USE_TC_TIMER_OPTIMISATION
         tc.printAverageElapsed();
     #endif
@@ -387,13 +468,13 @@ void scene2() {
 
         if (renderer.canvas.keyPressed(VK_ESCAPE)) break;
 
-        for (auto& m : scene) {
-            #if USE_MULTITHREAD_OPTIMIZATION && USE_STORE_VEC2D_INV_AREA_OPTIMIZATION && USE_VERTICES_SOA_OPTIMIZATION
-                renderUsingThreads(renderer, m, camera, L);
-            #else
+        #if USE_MULTITHREAD_OPTIMIZATION && USE_STORE_VEC2D_INV_AREA_OPTIMIZATION && USE_VERTICES_SOA_OPTIMIZATION
+            renderSceneUsingThreads(renderer, scene, camera, L);
+        #else
+            for (auto& m : scene) {
                 render(renderer, m, camera, L);
-            #endif
-        }
+            }
+        #endif
         renderer.present();
     }
 
@@ -501,13 +582,14 @@ void scene3() {
 
         if (renderer.canvas.keyPressed(VK_ESCAPE)) break;
 
-        for (auto& m : scene) {
-            #if USE_MULTITHREAD_OPTIMIZATION && USE_STORE_VEC2D_INV_AREA_OPTIMIZATION && USE_VERTICES_SOA_OPTIMIZATION
-                renderUsingThreads(renderer, m, camera, L);
-            #else
+        #if USE_MULTITHREAD_OPTIMIZATION && USE_STORE_VEC2D_INV_AREA_OPTIMIZATION && USE_VERTICES_SOA_OPTIMIZATION
+            // Batched rendering: all meshes in one multi-threaded pass
+            renderSceneUsingThreads(renderer, scene, camera, L);
+        #else
+            for (auto& m : scene) {
                 render(renderer, m, camera, L);
-            #endif
-        }
+            }
+        #endif
 
         renderer.present();
     }
