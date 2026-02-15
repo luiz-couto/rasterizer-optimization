@@ -420,7 +420,7 @@ void scene3() {
     std::vector<RandomObject> randomObjects;
     RandomNumberGenerator& rng = RandomNumberGenerator::getInstance();
 
-    for (unsigned int i = 0; i < 100; i++) {
+    for (unsigned int i = 0; i < 1000; i++) {
         Mesh* m = new Mesh();
         uint32_t chooseMesh = rng.getRandomInt(0, 1);
 
@@ -463,19 +463,17 @@ void scene3() {
                     randomObjects[i].initialPosition[0],
                     randomObjects[i].initialPosition[1],
                     randomObjects[i].initialPosition[2]
-                )
-                *
-                matrix::makeRotateXYZ(
-                    randomObjects[i].randomRotation[0],
-                    randomObjects[i].randomRotation[1],
-                    randomObjects[i].randomRotation[2]
                 );
         }
 
         if (renderer.canvas.keyPressed(VK_ESCAPE)) break;
 
         for (auto& m : scene) {
-            render(renderer, m, camera, L);
+            #if USE_MULTITHREAD_OPTIMIZATION && USE_STORE_VEC2D_INV_AREA_OPTIMIZATION && USE_VERTICES_SOA_OPTIMIZATION
+                renderUsingThreads(renderer, m, camera, L);
+            #else
+                render(renderer, m, camera, L);
+            #endif
         }
 
         renderer.present();
