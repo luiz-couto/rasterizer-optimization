@@ -88,6 +88,14 @@ struct Triangle {
     float ka, kd;  // Material properties per triangle
 };
 
+// Lightweight triangle data - only stores references/indices, not full triangle objects
+struct TriangleRef {
+    vec2D<int> minV;
+    vec2D<int> maxV;
+    Vertex v[3];  // Just the 3 vertices - much lighter than full triangle object
+    float ka, kd;
+};
+
 #if USE_MULTITHREAD_OPTIMIZATION && USE_STORE_VEC2D_INV_AREA_OPTIMIZATION && USE_VERTICES_SOA_OPTIMIZATION
 void renderUsingThreads(Renderer& renderer, Mesh* mesh, matrix& camera, Light& L) {
     matrix p = renderer.perspective * camera * mesh->world;
@@ -173,9 +181,10 @@ void renderUsingThreads(Renderer& renderer, Mesh* mesh, matrix& camera, Light& L
 // Batched rendering: collect triangles from ALL meshes, then render in one multi-threaded pass
 // This eliminates per-mesh synchronization overhead for scenes with many small objects
 void renderSceneUsingThreads(Renderer& renderer, std::vector<Mesh*>& scene, matrix& camera, Light& L) {
-    std::vector<Triangle> allTriangles;
+    std::vector<TriangleRef> allTriangles;
+    allTriangles.reserve(200000); // Pre-allocate to avoid reallocation overhead
 
-    // Phase 1: Collect all triangles from all meshes (single-threaded, but fast)
+    // Phase 1: Collect all triangle data from all meshes (single-threaded, but fast)
     for (auto& mesh : scene) {
         matrix p = renderer.perspective * camera * mesh->world;
 
@@ -197,15 +206,27 @@ void renderSceneUsingThreads(Renderer& renderer, std::vector<Mesh*>& scene, matr
 
             if (fabs(t[0].p[2]) > 1.0f || fabs(t[1].p[2]) > 1.0f || fabs(t[2].p[2]) > 1.0f) continue;
 
-            vec2D<float> minVf, maxVf;
-            triangle tri(t[0], t[1], t[2]);
+            // Compute bounds without creating full triangle object
+            vec2D<float> minVf(
+                std::min({t[0].p[0], t[1].p[0], t[2].p[0]}),
+                std::min({t[0].p[1], t[1].p[1], t[2].p[1]})
+            );
+            vec2D<float> maxVf(
+                std::max({t[0].p[0], t[1].p[0], t[2].p[0]}),
+                std::max({t[0].p[1], t[1].p[1], t[2].p[1]})
+            );
 
-            tri.getBoundsWindow(renderer.canvas, minVf, maxVf);
+            // Clamp to screen bounds
+            minVf.x = std::max(minVf.x, 0.0f);
+            minVf.y = std::max(minVf.y, 0.0f);
+            maxVf.x = std::min(maxVf.x, static_cast<float>(renderer.canvas.getWidth()));
+            maxVf.y = std::min(maxVf.y, static_cast<float>(renderer.canvas.getHeight()));
 
             vec2D<int> minV((int)minVf.x, (int)minVf.y);
             vec2D<int> maxV((int)ceil(maxVf.x), (int)ceil(maxVf.y));
 
-            allTriangles.push_back({ minV, maxV, tri, mesh->ka, mesh->kd });
+            // Store lightweight reference (just vertices and bounds)
+            allTriangles.push_back({ minV, maxV, {t[0], t[1], t[2]}, mesh->ka, mesh->kd });
         }
     }
 
@@ -233,12 +254,15 @@ void renderSceneUsingThreads(Renderer& renderer, std::vector<Mesh*>& scene, matr
 
         threadPool.enqueue([&renderer, &allTriangles, &L, &completedJobs, startY, endY]() {
             // Each thread processes all triangles but only draws pixels in its Y range
-            for (auto& t : allTriangles) {
+            for (auto& tRef : allTriangles) {
                 // Skip triangles that don't overlap with this thread's region
-                if (t.maxV.y < startY || t.minV.y >= endY) continue;
+                if (tRef.maxV.y < startY || tRef.minV.y >= endY) continue;
+
+                // Construct triangle object on-the-fly (avoids storing it in the vector)
+                triangle tri(tRef.v[0], tRef.v[1], tRef.v[2]);
 
                 // Draw the triangle (will only affect pixels in this thread's region)
-                t.tri.draw(renderer, L, t.ka, t.kd, t.minV, t.maxV, startY, endY);
+                tri.draw(renderer, L, tRef.ka, tRef.kd, tRef.minV, tRef.maxV, startY, endY);
             }
             completedJobs++;
         });
