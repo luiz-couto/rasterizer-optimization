@@ -22,7 +22,7 @@
 #include "optimizations.h"
 #include "threadpool.h"
 
-ThreadPool threadPool = ThreadPool(22);
+ThreadPool threadPool = ThreadPool();
 
 // Main rendering function that processes a mesh, transforms its vertices, applies lighting, and draws triangles on the canvas.
 // Input Variables:
@@ -448,9 +448,6 @@ void scene2() {
     #endif
 }
 
-// The SoA optimization will help in vertex-heavy scenario, but the current workload 
-// is rasterization-bound, not transform-bound.
-
 struct RandomObject {
     Mesh *object;
     vec4 initialPosition;
@@ -459,7 +456,7 @@ struct RandomObject {
     colour randomColour;
 };
 
-// random objects with random colors going from left to the right of the screen with random velocities and random rotations
+// objects with random colors going from left to the right of the screen with random velocities and random rotations
 void scene3() {
     Renderer renderer;
     matrix camera = matrix::makeIdentity();
