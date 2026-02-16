@@ -39,7 +39,7 @@ public:
 
 // Store elapsed times. "capture" captures the time from now to the last time capture was called
 // Using arrays to avoid overhead of vectors
-template<int MAX_SIZE = 100>
+template<int MAX_SIZE = 20>
 class TimerCaptures {
     private:
     long long elapsedTimes[MAX_SIZE];
